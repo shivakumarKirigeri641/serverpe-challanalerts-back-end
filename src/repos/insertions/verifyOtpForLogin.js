@@ -1,5 +1,4 @@
 const { connectDB } = require("../../database/connectDB");
-const updateUserAndAddress = require("./updateUserAndAddress");
 const pool = connectDB();
 const verifyOtpForLogin = async (mobile_number, otp) => {
   try {

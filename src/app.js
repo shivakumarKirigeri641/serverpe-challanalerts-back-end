@@ -36,7 +36,7 @@ app.use(cookieParser());
 //app.use("/docalerts/customer/", globalLimiter);
 
 /* Routes */
-app.use("/docalerts/customer", publicRouter);
+app.use("/vehicleowneralerts/platform/public", publicRouter);
 /* DB connections */
 connectDB();
 
