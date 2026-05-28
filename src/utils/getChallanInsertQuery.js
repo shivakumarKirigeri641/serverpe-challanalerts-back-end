@@ -1,4 +1,4 @@
-const getChallanInsertQuery = (data) => {
+const getChallanInsertQuery = (id, data) => {
   const myquerych = `
         INSERT INTO challan_details (
             fk_rc_details,
@@ -22,7 +22,7 @@ const getChallanInsertQuery = (data) => {
     `;
 
   const valuesch = [
-    data.fk_rc_details,
+    id,
     data.challan_no,
     data.violator_name,
     data.state,

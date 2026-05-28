@@ -1,4 +1,4 @@
-const getFastagInsertQuery = (data) => {
+const getFastagInsertQuery = (id, data) => {
   const myqueryft = `
         INSERT INTO fastag_details (
             fk_rc_details,            
@@ -15,13 +15,13 @@ const getFastagInsertQuery = (data) => {
     `;
 
   const valuesft = [
-    data.fk_rc_details,
-    data.fastag_id,
+    id,
+    data.fastagId,
     data.status,
-    data.bank_name,
-    data.customer_name,
+    data.bankName,
+    data.customerName,
     data.balance,
-    data.issued_date,
+    data.issuedDate,
   ];
 
   return {
