@@ -2,12 +2,13 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const getQueryTypes = require("../repos/gets/getQueryTypes");
+const getPlans = require("../repos/gets/getPlans");
 const getFeedbacks = require("../repos/gets/getFeedbacks");
 const validateForMobileNumber = require("../validators/validateForMobileNumber");
 const validateForFeedback = require("../validators/validateForFeedback");
 const validateForContactMe = require("../validators/validateForContactMe");
 const getGSTValue = require("../repos/gets/getGSTValue");
-const verifyOtpForLogin = require('../repos/insertions/verifyOtpForLogin')
+const verifyOtpForLogin = require("../repos/insertions/verifyOtpForLogin");
 const postFeedback = require("../repos/insertions/postFeedback");
 const postContactMe = require("../repos/insertions/postContactMe");
 const getRequestDetails = require("../utils/getRequestDetails");
@@ -16,6 +17,11 @@ const userVisitLandingPageAlertTemplate = require("../comms/userVisitLandingPage
 const getStatesAndUnions = require("../repos/gets/getStatesAndUnions");
 const validateForVerifyOtpLogin = require("../validators/validateForVerifyOtpLogin");
 const getUserMasterDetails = require("../repos/gets/getUserMasterDetails");
+const validateForMobileNumberForSubscription = require("../validators/validateForMobileNumberForSubscription");
+const checkIfVehicleExists = require("../repos/checks/checkIfVehicleExists");
+const checkIfMobileNumberAlreadySubscribed = require("../repos/checks/checkIfMobileNumberAlreadySubscribed");
+const subscribeUser = require("../repos/insertions/subscribeUser");
+const insertOtpForSubscription = require("../repos/insertions/insertOtpForSubscription");
 
 const publicRotuer = express.Router();
 publicRotuer.get("/query-types", async (req, res) => {
@@ -74,6 +80,46 @@ publicRotuer.get("/gst-value", async (req, res) => {
 publicRotuer.get("/feedbacks", async (req, res) => {
   try {
     const result = await getFeedbacks();
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  } finally {
+  }
+});
+publicRotuer.get("/subscription-plans-withtrail", async (req, res) => {
+  try {
+    const result = await getPlans();
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  } finally {
+  }
+});
+publicRotuer.get("/subscription-plans", async (req, res) => {
+  try {
+    const result = await getPlans(false);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
       powered_by: "ServerPe App Solutions",
@@ -205,80 +251,18 @@ publicRotuer.get("/states-unions", async (req, res) => {
   } finally {
   }
 });
-publicRotuer.post(
-  "/send-otp",  
-  async (req, res) => {
-    try {
-      let result = validateForMobileNumber(req);
-      if (false === result.successstatus) {
-        return res.status(result.statuscode).json({
-          statuscode: result.statuscode,
-          powered_by: "ServerPe App Solutions",
-          successstatus: result.successstatus,
-          message: result.message,
-          data: result.data,
-        });
-      }
-      result = await sendOtpForPurchaseHistory(result.data.mobile_number);
-      return res.status(result.statuscode).json({
-        statuscode: result.statuscode,
-        powered_by: "ServerPe App Solutions",
-        successstatus: result.successstatus,
-        message: result.message,
-        data: result.data,
-      });
-    } catch (err) {
-      return res.status(500).json({
-        statuscode: 500,
-        powered_by: "ServerPe App Solutions",
-        successstatus: false,
-        message: `Internal server error. Error:${err.message}`,
-      });
-    }
-  },
-);
-
-publicRotuer.post(
-  "/verify-otp",  
-  async (req, res) => {
-    try {
-      const mobileResult = validateForVerifyOtpLogin(req);
-      if (false === mobileResult.successstatus) {
-        return res.status(mobileResult.statuscode).json({
-          statuscode: mobileResult.statuscode,
-          powered_by: "ServerPe App Solutions",
-          successstatus: mobileResult.successstatus,
-          message: mobileResult.message,
-          data: mobileResult.data,
-        });
-      }
-      result = await verifyOtpForLogin(
-        mobileResult.data.mobile_number,
-        mobileResult.data.otp,
-      );
-      if(result.successstatus){
-        //get details of vehicle & user subscriptions
-      }
-      return res.status(result.statuscode).json({
-        statuscode: result.statuscode,
-        powered_by: "ServerPe App Solutions",
-        successstatus: result.successstatus,
-        message: result.message,
-        data: result.data,
-      });
-    } catch (err) {
-      return res.status(500).json({
-        statuscode: 500,
-        powered_by: "ServerPe App Solutions",
-        successstatus: false,
-        message: `Internal server error. Error:${err.message}`,
-      });
-    }
-  },
-);
-publicRotuer.get("/user-dashboard", async (req, res) => {
+publicRotuer.post("/dashboard/send-otp", async (req, res) => {
   try {
-    const result = await getUserMasterDetails();
+    let result = validateForMobileNumber(req);
+    if (false === result.successstatus) {
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+        data: result.data,
+      });
+    }
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
       powered_by: "ServerPe App Solutions",
@@ -293,7 +277,135 @@ publicRotuer.get("/user-dashboard", async (req, res) => {
       successstatus: false,
       message: `Internal server error. Error:${err.message}`,
     });
-  } finally {
+  }
+});
+
+publicRotuer.post("/dashboard/verify-otp", async (req, res) => {
+  try {
+    const mobileResult = validateForVerifyOtpLogin(req);
+    if (false === mobileResult.successstatus) {
+      return res.status(mobileResult.statuscode).json({
+        statuscode: mobileResult.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: mobileResult.successstatus,
+        message: mobileResult.message,
+        data: mobileResult.data,
+      });
+    }
+    result = await verifyOtpForLogin(
+      mobileResult.data.mobile_number,
+      mobileResult.data.otp,
+    );
+    if (result.successstatus) {
+      //get details of vehicle & user subscriptions
+      result = await getUserMasterDetails(mobileResult?.data?.mobile_number);
+    }
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  }
+});
+publicRotuer.post("/subscribe/send-otp", async (req, res) => {
+  try {
+    let result = validateForMobileNumberForSubscription(req);
+    if (false === result.successstatus) {
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+        data: result.data,
+      });
+    }
+    //check if vehicle mobile exists
+    result = await checkIfMobileNumberAlreadySubscribed(
+      req?.body?.mobile_number,
+    );
+    if (false === result.successstatus) {
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+      });
+    }
+    //check if vehicle already exists
+    result = await checkIfVehicleExists(req?.body?.vehicle_number);
+    if (false === result.successstatus) {
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+      });
+    }
+    let otp = "1234";
+    result = await insertOtpForSubscription(req.body.mobile_number, otp);
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  }
+});
+publicRotuer.post("/subscribe/verify-otp", async (req, res) => {
+  try {
+    const mobileResult = validateForVerifyOtpLogin(req);
+    if (false === mobileResult.successstatus) {
+      return res.status(mobileResult.statuscode).json({
+        statuscode: mobileResult.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: mobileResult.successstatus,
+        message: mobileResult.message,
+        data: mobileResult.data,
+      });
+    }
+    result = await verifyOtpForLogin(
+      mobileResult.data.mobile_number,
+      mobileResult.data.otp,
+    );
+    if (true === result.successstatus) {
+      //subscribe teh vehicle and activate the free trail
+      result = await subscribeUser(
+        mobileResult.data.user_name,
+        mobileResult.data.mobile_number,
+        mobileResult.data.vehicle_number,
+      );
+    }
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
   }
 });
 module.exports = publicRotuer;
