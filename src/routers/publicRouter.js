@@ -22,6 +22,7 @@ const checkIfVehicleExists = require("../repos/checks/checkIfVehicleExists");
 const checkIfMobileNumberAlreadySubscribed = require("../repos/checks/checkIfMobileNumberAlreadySubscribed");
 const subscribeUser = require("../repos/insertions/subscribeUser");
 const insertOtpForSubscription = require("../repos/insertions/insertOtpForSubscription");
+const subscribeUser_local = require("../repos/insertions/subscribeUser_local");
 
 const publicRotuer = express.Router();
 publicRotuer.get("/query-types", async (req, res) => {
@@ -386,7 +387,12 @@ publicRotuer.post("/subscribe/verify-otp", async (req, res) => {
     );
     if (true === result.successstatus) {
       //subscribe teh vehicle and activate the free trail
-      result = await subscribeUser(
+      /*result = await subscribeUser(
+        mobileResult.data.user_name,
+        mobileResult.data.mobile_number,
+        mobileResult.data.vehicle_number,
+      );*/
+      result = await subscribeUser_local(
         mobileResult.data.user_name,
         mobileResult.data.mobile_number,
         mobileResult.data.vehicle_number,
