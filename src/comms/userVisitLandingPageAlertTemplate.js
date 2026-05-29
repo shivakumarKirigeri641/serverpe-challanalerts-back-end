@@ -50,7 +50,7 @@ const userVisitLandingPageAlertTemplate = ({
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Visitor Alert - ServerPe</title>
+    <title>New Visitor Alert - AlertMyVahan</title>
     <style>
       body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; background-color: #f5f7fa; }
       .container { max-width: 600px; margin: 20px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -71,7 +71,7 @@ const userVisitLandingPageAlertTemplate = ({
       </div>
       <div class="content">
         <div class="alert-box">
-          <p style="margin:0; color: #047857; font-weight: 600;">A new user just visited the ServerPe landing page.</p>
+          <p style="margin:0; color: #047857; font-weight: 600;">A new user just visited the AlertMyVahan landing page.</p>
         </div>
 
         <div class="section-title">Visitor Info</div>

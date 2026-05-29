@@ -5,8 +5,9 @@ const publicRouter = require("./routers/publicRouter");
 const cookieParser = require("cookie-parser");
 require("dotenv").config();
 const { connectDB } = require("./database/connectDB");
+const { globalLimiter } = require("./utils/rateLimiters");
+const cryptoMiddleware = require("./middlewares/cryptoMiddleware");
 //const sweepStaleReservations = require("./repos/jobs/sweepStaleReservations");
-//const { globalLimiter } = require("./utils/rateLimiters");
 const PORT = process.env.PORT;
 const app = express();
 
@@ -32,11 +33,14 @@ app.use(cookieParser());
 /* Static files — NOT rate-limited (images load freely) */
 //app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-/* 🛡️ Global rate-limit — applies only to API routes, not to /uploads */
-//app.use("/docalerts/customer/", globalLimiter);
-
-/* Routes */
-app.use("/vehicleowneralerts/platform/public", publicRouter);
+/* 🛡️ Global rate-limit + 🔐 transparent payload encryption on the public API.
+   Order: rate-limit first (cheap reject), then crypto (decrypt req / encrypt res). */
+app.use(
+  "/vehicleowneralerts/platform/public",
+  globalLimiter,
+  cryptoMiddleware,
+  publicRouter,
+);
 /* DB connections */
 connectDB();
 

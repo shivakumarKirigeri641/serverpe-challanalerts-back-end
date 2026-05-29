@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const feedbackUpload = require("../utils/feedbackUpload");
+const { strictLimiter } = require("../utils/rateLimiters");
 const createRenewOrder = require("../repos/insertions/createRenewOrder");
 const verifyRenewPayment = require("../repos/insertions/verifyRenewPayment");
 const getInvoicePath = require("../repos/gets/getInvoicePath");
@@ -154,6 +155,7 @@ publicRotuer.get("/subscription-plans", async (req, res) => {
 });
 publicRotuer.post(
   "/feedback",
+  strictLimiter,
   (req, res, next) => {
     feedbackUpload.single("pic")(req, res, (err) => {
       if (err) {
@@ -212,7 +214,7 @@ publicRotuer.post(
     }
   },
 );
-publicRotuer.post("/contact-me", async (req, res) => {
+publicRotuer.post("/contact-me", strictLimiter, async (req, res) => {
   try {
     const validation = validateForContactMe(req);
     if (false === validation.successstatus) {
@@ -389,7 +391,7 @@ publicRotuer.get(
     }
   },
 );
-publicRotuer.post("/dashboard/send-otp", async (req, res) => {
+publicRotuer.post("/dashboard/send-otp", strictLimiter, async (req, res) => {
   try {
     let result = validateForMobileNumber(req);
     if (false === result.successstatus) {
@@ -430,7 +432,7 @@ publicRotuer.post("/dashboard/send-otp", async (req, res) => {
   }
 });
 
-publicRotuer.post("/dashboard/verify-otp", async (req, res) => {
+publicRotuer.post("/dashboard/verify-otp", strictLimiter, async (req, res) => {
   try {
     const mobileResult = validateForVerifyOtpDashboard(req);
     if (false === mobileResult.successstatus) {
@@ -466,7 +468,7 @@ publicRotuer.post("/dashboard/verify-otp", async (req, res) => {
     });
   }
 });
-publicRotuer.post("/subscribe/send-otp", async (req, res) => {
+publicRotuer.post("/subscribe/send-otp", strictLimiter, async (req, res) => {
   try {
     let result = validateForMobileNumberForSubscription(req);
     if (false === result.successstatus) {
@@ -518,7 +520,7 @@ publicRotuer.post("/subscribe/send-otp", async (req, res) => {
     });
   }
 });
-publicRotuer.post("/subscribe/verify-otp", async (req, res) => {
+publicRotuer.post("/subscribe/verify-otp", strictLimiter, async (req, res) => {
   try {
     const mobileResult = validateForVerifyOtpLogin(req);
     if (false === mobileResult.successstatus) {
@@ -563,7 +565,7 @@ publicRotuer.post("/subscribe/verify-otp", async (req, res) => {
 /* -------------------------- renewal / payment ---------------------------- */
 
 // Create a Razorpay order for renewing a paid plan for one or more vehicles.
-publicRotuer.post("/renew/create-order", async (req, res) => {
+publicRotuer.post("/renew/create-order", strictLimiter, async (req, res) => {
   try {
     const validation = validateForRenew(req);
     if (false === validation.successstatus) {
@@ -597,7 +599,7 @@ publicRotuer.post("/renew/create-order", async (req, res) => {
 });
 
 // Verify a Razorpay payment, activate the subscription, persist payment+invoice.
-publicRotuer.post("/renew/verify-payment", async (req, res) => {
+publicRotuer.post("/renew/verify-payment", strictLimiter, async (req, res) => {
   try {
     const validation = validateForRenew(req);
     if (false === validation.successstatus) {
