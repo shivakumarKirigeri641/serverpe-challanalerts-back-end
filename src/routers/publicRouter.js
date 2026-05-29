@@ -20,9 +20,18 @@ const getUserMasterDetails = require("../repos/gets/getUserMasterDetails");
 const validateForMobileNumberForSubscription = require("../validators/validateForMobileNumberForSubscription");
 const checkIfVehicleExists = require("../repos/checks/checkIfVehicleExists");
 const checkIfMobileNumberAlreadySubscribed = require("../repos/checks/checkIfMobileNumberAlreadySubscribed");
+const ccheckIfMobileNumberForDashboard = require("../repos/checks/checkIfMobileNumberForDashboard");
 const subscribeUser = require("../repos/insertions/subscribeUser");
 const insertOtpForSubscription = require("../repos/insertions/insertOtpForSubscription");
 const subscribeUser_local = require("../repos/insertions/subscribeUser_local");
+const getTerms = require("../repos/gets/getTerms");
+const getPrivacyPolicy = require("../repos/gets/getPrivacyPolicy");
+const getConsentPolicy = require("../repos/gets/getConsentPolicy");
+const getRefundPolicy = require("../repos/gets/getRefundPolicy");
+const getLiabilitiesPolicy = require("../repos/gets/getLiabilitiesPolicy");
+const getExchangeVehicleNumberPolicy = require("../repos/gets/getExchangeVehicleNumberPolicy");
+const validateForVerifyOtpDashboard = require("../validators/validateForVerifyOtpDashboard");
+const checkIfMobileNumberForDashboard = require("../repos/checks/checkIfMobileNumberForDashboard");
 
 const publicRotuer = express.Router();
 publicRotuer.get("/query-types", async (req, res) => {
@@ -252,6 +261,129 @@ publicRotuer.get("/states-unions", async (req, res) => {
   } finally {
   }
 });
+publicRotuer.get("/agreements/terms", async (req, res) => {
+  try {
+    const result = await getTerms();
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  } finally {
+  }
+});
+publicRotuer.get("/agreements/privacy-policy", async (req, res) => {
+  try {
+    const result = await getPrivacyPolicy();
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  } finally {
+  }
+});
+publicRotuer.get("/agreements/consent-policy", async (req, res) => {
+  try {
+    const result = await getConsentPolicy();
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  } finally {
+  }
+});
+publicRotuer.get("/agreements/refund-policy", async (req, res) => {
+  try {
+    const result = await getRefundPolicy();
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  } finally {
+  }
+});
+publicRotuer.get("/agreements/liabilities-policy", async (req, res) => {
+  try {
+    const result = await getLiabilitiesPolicy();
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  } finally {
+  }
+});
+publicRotuer.get(
+  "/agreements/exchange-vehicle-number-policy",
+  async (req, res) => {
+    try {
+      const result = await getExchangeVehicleNumberPolicy();
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+        data: result.data,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        statuscode: 500,
+        powered_by: "ServerPe App Solutions",
+        successstatus: false,
+        message: `Internal server error. Error:${err.message}`,
+      });
+    } finally {
+    }
+  },
+);
 publicRotuer.post("/dashboard/send-otp", async (req, res) => {
   try {
     let result = validateForMobileNumber(req);
@@ -264,6 +396,18 @@ publicRotuer.post("/dashboard/send-otp", async (req, res) => {
         data: result.data,
       });
     }
+    //store an OTP so /dashboard/verify-otp can validate it
+    result = await checkIfMobileNumberForDashboard(req?.body?.mobile_number);
+    if (false === result.successstatus) {
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+      });
+    }
+    let otp = "1234";
+    result = await insertOtpForSubscription(req?.body?.mobile_number, otp);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
       powered_by: "ServerPe App Solutions",
@@ -283,7 +427,7 @@ publicRotuer.post("/dashboard/send-otp", async (req, res) => {
 
 publicRotuer.post("/dashboard/verify-otp", async (req, res) => {
   try {
-    const mobileResult = validateForVerifyOtpLogin(req);
+    const mobileResult = validateForVerifyOtpDashboard(req);
     if (false === mobileResult.successstatus) {
       return res.status(mobileResult.statuscode).json({
         statuscode: mobileResult.statuscode,
