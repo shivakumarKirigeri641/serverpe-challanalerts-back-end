@@ -80,6 +80,15 @@ const subscribeUser_local = async (
       );
       const result_fastag = await pool.query(myqueryft, valuesft);
     }
+    //insert into user_subscribed
+    let subscription_plans = await pool.query(
+      `select *from subscription_plans where price=0`,
+    );
+    let result_subscribed_details = await pool.query(
+      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on) values ($1,$2,now(),
+    now() + interval '5 minutes') returning *`,
+      [result.rows[0].id, subscription_plans.rows[0].id],
+    );
     await pool.query(`COMMIT`);
     //alert messages here
 
@@ -93,6 +102,17 @@ const subscribeUser_local = async (
         rc_details: result_rc.rows[0], //precaution, do not send all deatails, just for test only
         challan_details: result_challans,
         fastag_details: result_fastag ? result_fastag.rows[0] : null,
+        subscription_plan: subscription_plans.rows[0],
+        // Same shape as getUserMasterDetails' subscription_list: plan fields
+        // merged with this subscription's active_on / expires_on / is_active.
+        subscription_list: [
+          {
+            ...subscription_plans.rows[0],
+            active_on: result_subscribed_details.rows[0].active_on,
+            expires_on: result_subscribed_details.rows[0].expires_on,
+            is_active: result_subscribed_details.rows[0].is_active,
+          },
+        ],
       },
     };
   } catch (err) {

@@ -1,6 +1,11 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
+const feedbackUpload = require("../utils/feedbackUpload");
+const createRenewOrder = require("../repos/insertions/createRenewOrder");
+const verifyRenewPayment = require("../repos/insertions/verifyRenewPayment");
+const getInvoicePath = require("../repos/gets/getInvoicePath");
+const validateForRenew = require("../validators/validateForRenew");
 const getQueryTypes = require("../repos/gets/getQueryTypes");
 const getPlans = require("../repos/gets/getPlans");
 const getFeedbacks = require("../repos/gets/getFeedbacks");
@@ -550,6 +555,136 @@ publicRotuer.post("/subscribe/verify-otp", async (req, res) => {
       message: result.message,
       data: result.data,
     });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  }
+});
+
+/* -------------------------- renewal / payment ---------------------------- */
+
+// Create a Razorpay order for renewing a paid plan for one or more vehicles.
+publicRotuer.post("/renew/create-order", async (req, res) => {
+  try {
+    const validation = validateForRenew(req);
+    if (false === validation.successstatus) {
+      return res.status(validation.statuscode).json({
+        statuscode: validation.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: validation.successstatus,
+        message: validation.message,
+        data: validation.data,
+      });
+    }
+    const result = await createRenewOrder(
+      validation.data.fk_subscription_plans,
+      validation.data.vehicle_numbers,
+    );
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  }
+});
+
+// Verify a Razorpay payment, activate the subscription, persist payment+invoice.
+publicRotuer.post("/renew/verify-payment", async (req, res) => {
+  try {
+    const validation = validateForRenew(req);
+    if (false === validation.successstatus) {
+      return res.status(validation.statuscode).json({
+        statuscode: validation.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: validation.successstatus,
+        message: validation.message,
+        data: validation.data,
+      });
+    }
+    const { mobile_number, razorpay_order_id, razorpay_payment_id, razorpay_signature } =
+      req.body || {};
+    if (
+      !mobile_number ||
+      !razorpay_order_id ||
+      !razorpay_payment_id ||
+      !razorpay_signature
+    ) {
+      return res.status(400).json({
+        statuscode: 400,
+        powered_by: "ServerPe App Solutions",
+        successstatus: false,
+        message:
+          "mobile_number and razorpay_order_id/payment_id/signature are required",
+      });
+    }
+    const cleanedMobile = String(mobile_number)
+      .replace(/\s+/g, "")
+      .replace(/^(\+91|91)/, "");
+    const result = await verifyRenewPayment({
+      mobile_number: cleanedMobile,
+      fk_subscription_plans: validation.data.fk_subscription_plans,
+      vehicle_numbers: validation.data.vehicle_numbers,
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    });
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  }
+});
+
+// Download a generated GST invoice PDF.
+publicRotuer.get("/invoice/:invoice_id", async (req, res) => {
+  try {
+    const result = await getInvoicePath(req.params.invoice_id);
+    if (false === result.successstatus) {
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+      });
+    }
+    const absPath = path.join(__dirname, "..", result.data.invoice_path);
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).json({
+        statuscode: 404,
+        powered_by: "ServerPe App Solutions",
+        successstatus: false,
+        message: "Invoice file not found",
+      });
+    }
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${result.data.invoice_id}.pdf"`,
+    );
+    return res.sendFile(absPath);
   } catch (err) {
     return res.status(500).json({
       statuscode: 500,
