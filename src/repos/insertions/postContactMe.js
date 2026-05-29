@@ -11,17 +11,32 @@ const postContactMe = async (
   try {
     await pool.query("BEGIN");
     let result_query_typesdetails = await pool.query(
-      `select *from query_types where title=$1`,
+      `select *from query_types where title=$1 and is_active=true`,
       [query_type_name],
     );
+    // Unknown/empty topic → fall back to the general type, then to any active
+    // type, so we never crash on a missing row.
     if (0 === result_query_typesdetails.rows.length) {
       result_query_typesdetails = await pool.query(
-        `select *from query_types where title='General Query'`,
+        `select *from query_types where code='GENERAL' and is_active=true`,
       );
     }
+    if (0 === result_query_typesdetails.rows.length) {
+      result_query_typesdetails = await pool.query(
+        `select *from query_types where is_active=true order by id limit 1`,
+      );
+    }
+    if (0 === result_query_typesdetails.rows.length) {
+      await pool.query("ROLLBACK");
+      return {
+        statuscode: 500,
+        successstatus: false,
+        message: "No active query types configured",
+      };
+    }
     const result = await pool.query(
-      `INSERT INTO contact_me (query_type_id, user_name, mobile_number, email, message)
-       VALUES ($1, $2, $3, $4,$5)
+      `INSERT INTO contact_me (fk_query_types, name, mobile_number, email, message)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *;`,
       [
         result_query_typesdetails.rows[0].id,

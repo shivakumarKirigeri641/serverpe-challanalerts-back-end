@@ -41,8 +41,7 @@ const checkIfMobileNumberForDashboard = require("../repos/checks/checkIfMobileNu
 const publicRotuer = express.Router();
 publicRotuer.get("/query-types", async (req, res) => {
   try {
-    const result = await getQueryTypes();
-    let { ipAddress, visitTime, devicename, result_ipdetails } =
+    /*let { ipAddress, visitTime, devicename, result_ipdetails } =
       await getRequestDetails(req);
     await sendMail({
       to: process.env.ADMINMAIL,
@@ -54,7 +53,8 @@ publicRotuer.get("/query-types", async (req, res) => {
         result_ipdetails,
       }),
       text: "Alert! User visited landing page",
-    });
+    });*/
+    const result = await getQueryTypes();
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
       powered_by: "ServerPe App Solutions",
