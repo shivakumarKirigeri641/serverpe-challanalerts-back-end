@@ -6,8 +6,7 @@ const err = (message) => ({
   data: null,
 });
 
-const isNonEmptyString = (v) =>
-  typeof v === "string" && v.trim().length > 0;
+const isNonEmptyString = (v) => typeof v === "string" && v.trim().length > 0;
 
 const validateForVerifyOtpLogin = (req) => {
   try {
@@ -15,6 +14,7 @@ const validateForVerifyOtpLogin = (req) => {
     const user_name = req?.body?.user_name;
     const otp = req?.body?.otp;
     const vehicle_number = req?.body?.vehicle_number;
+    const fk_states_unions = req?.body?.fk_states_unions;
 
     if (!mobile_number) return err("mobile_number is required");
     if (!otp) return err("otp is required");
@@ -41,10 +41,26 @@ const validateForVerifyOtpLogin = (req) => {
       return err("user_name contains invalid characters");
     }
 
-    if (!isNonEmptyString(vehicle_number)) return err("vehicle_number is required");
-    const cleanedVehicle = vehicle_number.toString().toUpperCase().replace(/[\s-]+/g, "");
+    if (!isNonEmptyString(vehicle_number))
+      return err("vehicle_number is required");
+    const cleanedVehicle = vehicle_number
+      .toString()
+      .toUpperCase()
+      .replace(/[\s-]+/g, "");
     if (!/^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{1,4}$/.test(cleanedVehicle)) {
       return err("Invalid vehicle_number format");
+    }
+
+    if (
+      fk_states_unions === undefined ||
+      fk_states_unions === null ||
+      String(fk_states_unions).trim() === ""
+    ) {
+      return err("fk_states_unions is required");
+    }
+    const cleanedStateUnion = Number(fk_states_unions);
+    if (!Number.isInteger(cleanedStateUnion) || cleanedStateUnion <= 0) {
+      return err("Invalid fk_states_unions");
     }
 
     return {
@@ -57,6 +73,7 @@ const validateForVerifyOtpLogin = (req) => {
         otp: cleanedOtp,
         user_name: cleanedName,
         vehicle_number: cleanedVehicle,
+        fk_states_unions: cleanedStateUnion,
       },
     };
   } catch (error) {

@@ -15,6 +15,11 @@ const validateForMobileNumberForSubscription = (req) => {
       req?.query?.user_name ||
       req?.headers?.user_name;
 
+    const fk_states_unions =
+      req?.body?.fk_states_unions ||
+      req?.query?.fk_states_unions ||
+      req?.headers?.fk_states_unions;
+
     if (!mobile_number) {
       return {
         statuscode: 400,
@@ -102,6 +107,31 @@ const validateForMobileNumberForSubscription = (req) => {
       };
     }
 
+    if (
+      fk_states_unions === undefined ||
+      fk_states_unions === null ||
+      String(fk_states_unions).trim() === ""
+    ) {
+      return {
+        statuscode: 400,
+        successstatus: false,
+        powered_by: "ServerPe App Solutions",
+        message: "fk_states_unions is required",
+        data: null,
+      };
+    }
+
+    const cleanedStateUnion = Number(fk_states_unions);
+    if (!Number.isInteger(cleanedStateUnion) || cleanedStateUnion <= 0) {
+      return {
+        statuscode: 400,
+        successstatus: false,
+        powered_by: "ServerPe App Solutions",
+        message: "Invalid fk_states_unions",
+        data: null,
+      };
+    }
+
     return {
       statuscode: 200,
       successstatus: true,
@@ -111,6 +141,7 @@ const validateForMobileNumberForSubscription = (req) => {
         mobile_number: cleanedMobile,
         vehicle_number: cleanedVehicle,
         user_name: cleanedUserName,
+        fk_states_unions: cleanedStateUnion,
       },
     };
   } catch (error) {

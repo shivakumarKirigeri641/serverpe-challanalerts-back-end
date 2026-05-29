@@ -540,6 +540,7 @@ publicRotuer.post("/subscribe/verify-otp", async (req, res) => {
         mobileResult.data.user_name,
         mobileResult.data.mobile_number,
         mobileResult.data.vehicle_number,
+        mobileResult.data.fk_states_unions,
       );
     }
     return res.status(result.statuscode).json({

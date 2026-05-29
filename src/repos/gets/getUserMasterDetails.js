@@ -5,7 +5,8 @@ const getUserMasterDetails = async (mobile_number) => {
   try {
     //user-details
     const result_user = await pool.query(
-      `select *from users where mobile_number=$1 and is_active=true`,
+      `select u.user_name, u.mobile_number, su.state_union_name, su.state_union_code, su.rto_code, su.country_name from users u
+       join states_unions su on su.id = u.fk_states_unions where u.mobile_number=$1 and u.is_active=true`,
       [mobile_number],
     );
     if (0 === result_user.rows.length) {
@@ -34,26 +35,28 @@ const getUserMasterDetails = async (mobile_number) => {
         `select id, challan_no, challan_date, offence, penalty, challan_location, challan_amount, rto_name, is_active from challan_details where fk_rc_details=$1 order by created_at`,
         [result_rc.rows[i].id],
       );
-      const result_violoation_details = await pool.query(
-        `select *from violation_details where fk_challan_details=$1 order by created_at`,
-        [result_challans_overview.rows[i].id],
-      );
-      challan_data.push({
-        challan_overview: result_challans_overview.rows[0],
-        violation_details: result_violoation_details.rows,
-      });
+      for (let j = 0; j < result_challans_overview.rows.length; j++) {
+        const result_violoation_details = await pool.query(
+          `select *from violation_details where fk_challan_details=$1 order by created_at`,
+          [result_challans_overview.rows[j].id],
+        );
+        challan_data.push({
+          challan_overview: result_challans_overview.rows[j],
+          violation_details: result_violoation_details.rows,
+        });
+      }
     }
     const result_fastag_details = await pool.query(
       `select *from fastag_details where fk_rc_details=$1 order by created_at`,
       [result_rc.rows[0].id],
     );
     const result_subscribed_details = await pool.query(
-      `select sp.*, us.active_on, us.expires_on, us.is_active 
-          from user_subscribed us 
+      `select sp.*, us.active_on, us.expires_on, us.is_active
+          from user_subscribed us
           join subscription_plans sp on sp.id = us.fk_subscription_plans
           join users u on u.id = us.fk_users
           where u.mobile_number =$1 order by us.created_at`,
-      [result_rc.rows[0].id],
+      [mobile_number],
     );
     vehicle_subscriptoin_details.push({
       rc_details: result_rc.rows[0],

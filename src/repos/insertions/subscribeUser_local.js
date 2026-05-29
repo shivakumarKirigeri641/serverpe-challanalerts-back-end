@@ -11,12 +11,13 @@ const subscribeUser_local = async (
   user_name,
   mobile_number,
   vehicle_number,
+  fk_states_unions,
 ) => {
   try {
     await pool.query(`BEGIN`);
     const result = await pool.query(
-      `insert into users(user_name, mobile_number) values ($1,$2) returning *;`,
-      [user_name, mobile_number],
+      `insert into users(user_name, mobile_number, fk_states_unions) values ($1,$2,$3) returning *;`,
+      [user_name, mobile_number, fk_states_unions],
     );
     if (0 === result.rows.length) {
       return {
