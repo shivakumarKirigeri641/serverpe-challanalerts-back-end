@@ -111,7 +111,7 @@ const subscribeUser = async (
     let result_subscribed_details = await pool.query(
       `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on) values ($1,$2,now(),
     now() + interval '5 minutes') returning *`,
-      [result_user.rows[0].id, subscription_plans.rows[0].id],
+      [result.rows[0].id, subscription_plans.rows[0].id],
     );
     await pool.query(`COMMIT`);
     //alert messages here

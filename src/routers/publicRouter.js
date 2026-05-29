@@ -536,12 +536,7 @@ publicRotuer.post("/subscribe/verify-otp", async (req, res) => {
     );
     if (true === result.successstatus) {
       //subscribe teh vehicle and activate the free trail
-      /*result = await subscribeUser(
-        mobileResult.data.user_name,
-        mobileResult.data.mobile_number,
-        mobileResult.data.vehicle_number,
-      );*/
-      result = await subscribeUser_local(
+      result = await subscribeUser(
         mobileResult.data.user_name,
         mobileResult.data.mobile_number,
         mobileResult.data.vehicle_number,
@@ -614,8 +609,12 @@ publicRotuer.post("/renew/verify-payment", async (req, res) => {
         data: validation.data,
       });
     }
-    const { mobile_number, razorpay_order_id, razorpay_payment_id, razorpay_signature } =
-      req.body || {};
+    const {
+      mobile_number,
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    } = req.body || {};
     if (
       !mobile_number ||
       !razorpay_order_id ||

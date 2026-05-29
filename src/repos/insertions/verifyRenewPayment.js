@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const axios = require("axios");
 const { connectDB } = require("../../database/connectDB");
 const { getRazorpay } = require("../../utils/razorpayClient");
 const generateInvoicePdf = require("../../temp/generateInvoicePdf");
@@ -12,10 +13,39 @@ const pool = connectDB();
 
 /** Insert a brand-new vehicle (RC + challans + violations + fastag) for a user. */
 async function insertNewVehicle(fk_users, vehicle_number) {
-  const rc = getRC(vehicle_number);
+  /*const rc = getRC(vehicle_number);
   const challan = getChallan(vehicle_number);
-  const fastag = getFastag(vehicle_number);
-
+  const fastag = getFastag(vehicle_number);*/
+  const rc_external_details = await axios.post(
+    process.env.IDS_EXTERNAL_API_RC,
+    {
+      api_id: process.env.APIID,
+      api_key: process.env.IDS_API_KEY,
+      token_id: process.env.TOKEN_ID,
+      reg_no: vehicle_number,
+    },
+  );
+  const challan_external_details = await axios.post(
+    process.env.IDS_EXTERNAL_API_CHALLAN,
+    {
+      api_id: process.env.APIID,
+      api_key: process.env.IDS_API_KEY,
+      token_id: process.env.TOKEN_ID,
+      reg_no: vehicle_number,
+    },
+  );
+  const fastag_external_details = await axios.post(
+    process.env.IDS_EXTERNAL_API_FASTAG,
+    {
+      api_id: process.env.APIID,
+      api_key: process.env.IDS_API_KEY,
+      token_id: process.env.TOKEN_ID,
+      vehicle_num: vehicle_number,
+    },
+  );
+  const rc = rc_external_details;
+  const challan = challan_external_details;
+  const fastag = fastag_external_details;
   const { myqueryrc, valuesrc } = getRCInsertQuery(fk_users, rc?.data?.data);
   const result_rc = await pool.query(myqueryrc, valuesrc);
   const rcId = result_rc.rows[0].id;
