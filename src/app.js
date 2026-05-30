@@ -15,16 +15,24 @@ const app = express();
 app.set("trust proxy", 1);
 app.use(express.json());
 
-/* ✅ CORS for cross-subdomain cookies */
-/*app.use(
-  cors({
-    origin: ["https://serverpe.in", "https://admin.serverpe.in"],
-    credentials: true,
-  }),
-);*/
+/* ✅ CORS for cross-subdomain cookies.
+   Allowed origins come from CORS_ORIGINS (comma-separated) when set, otherwise
+   fall back to the known production domains + local dev. The production frontend
+   (alertmyvahan.in) MUST be listed or the browser blocks every API call. */
+const defaultOrigins = [
+  "https://alertmyvahan.in",
+  "https://www.alertmyvahan.in",
+  "https://serverpe.in",
+  "https://admin.serverpe.in",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+const allowedOrigins = (process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+  : defaultOrigins);
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"],
+    origin: allowedOrigins,
     credentials: true,
   }),
 );
