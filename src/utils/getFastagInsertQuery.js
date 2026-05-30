@@ -1,3 +1,4 @@
+const parseToISODate = require("./parseToISODate");
 const getFastagInsertQuery = (id, data) => {
   const myqueryft = `
         INSERT INTO fastag_details (
@@ -21,7 +22,7 @@ const getFastagInsertQuery = (id, data) => {
     data.bankName,
     data.customerName,
     data.balance,
-    data.issuedDate,
+    parseToISODate(data.issuedDate),
   ];
 
   return {

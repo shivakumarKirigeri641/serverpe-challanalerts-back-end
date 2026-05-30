@@ -1,3 +1,4 @@
+const parseToISODate = require("./parseToISODate");
 const getChallanInsertQuery = (id, data) => {
   const myquerych = `
         INSERT INTO challan_details (
@@ -26,7 +27,7 @@ const getChallanInsertQuery = (id, data) => {
     data.challan_no,
     data.violator_name,
     data.state,
-    data.challan_date,
+    parseToISODate(data.challan_date),
     data.offence,
     data.penalty,
     data.challan_location,
