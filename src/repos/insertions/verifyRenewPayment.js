@@ -112,7 +112,10 @@ const verifyRenewPayment = async (p) => {
 
     // 5b) Downgrade: disable the vehicles the user chose to drop (kept for
     //     history; just hidden from the dashboard via is_active=false).
-    if (Array.isArray(remove_vehicle_numbers) && remove_vehicle_numbers.length) {
+    if (
+      Array.isArray(remove_vehicle_numbers) &&
+      remove_vehicle_numbers.length
+    ) {
       const toRemove = remove_vehicle_numbers.filter(
         (v) => !vehicle_numbers.includes(v),
       );
@@ -237,9 +240,8 @@ const verifyRenewPayment = async (p) => {
        values ($1,$2,$3,$4,$5) returning *`,
       [user.id, subscription.id, paymentRowId, invoiceId, invoicePath],
     );
-
     await pool.query(`COMMIT`);
-
+    //alert here to user & as well as for admin abot renewal
     return {
       statuscode: 200,
       successstatus: true,

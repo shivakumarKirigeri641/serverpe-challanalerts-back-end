@@ -114,6 +114,7 @@ const subscribeUser = async (
       [result.rows[0].id, subscription_plans.rows[0].id],
     );
     await pool.query(`COMMIT`);
+    //alert here to user & as well as for admin
     //alert messages here
 
     return {

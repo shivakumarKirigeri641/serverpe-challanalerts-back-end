@@ -271,6 +271,7 @@ const verifyReplaceVehiclePayment = async (p) => {
     );
 
     await pool.query(`COMMIT`);
+    //alert here to user & as well as for admin abot replaced vehicle
 
     // Fresh dashboard snapshot (post-commit) so the client can update in place
     // — the retired vehicle drops off and the new one appears immediately.

@@ -11,6 +11,7 @@ const postFeedback = async (user_name, rating, message, photopath = null) => {
       [user_name, rating, message || null, photopath || null],
     );
     await pool.query("COMMIT");
+    //alert here admin abot feedback
     return {
       statuscode: 200,
       successstatus: true,
