@@ -9,16 +9,45 @@ const pool = connectDB();
  * the payable amount is simply the plan price. Returns the order plus the plan
  * and the plates so the UI can show its summary.
  *
+ * @param {string} mobile_number        cleaned subscriber mobile (active, paid)
  * @param {number} fk_replacement_plan  chosen replacement offer id (price>0)
  * @param {string} old_vehicle_number   plate being swapped out
  * @param {string} new_vehicle_number   plate being swapped in
  */
 const createReplaceVehicleOrder = async (
+  mobile_number,
   fk_replacement_plan,
   old_vehicle_number,
   new_vehicle_number,
 ) => {
   try {
+    // Replacement is a paid-plan benefit — the user must have an active PAID
+    // subscription. Block trial (price=0) users before any payment is taken.
+    const subRes = await pool.query(
+      `select sp.price as plan_price
+         from user_subscribed us
+         join subscription_plans sp on sp.id = us.fk_subscription_plans
+         join users u on u.id = us.fk_users
+        where u.mobile_number=$1 and u.is_active=true and us.is_active=true
+        order by us.id desc limit 1`,
+      [mobile_number],
+    );
+    if (subRes.rows.length === 0) {
+      return {
+        statuscode: 400,
+        successstatus: false,
+        message: "No active subscription to replace a vehicle on",
+      };
+    }
+    if (Number(subRes.rows[0].plan_price) <= 0) {
+      return {
+        statuscode: 400,
+        successstatus: false,
+        message:
+          "Vehicle replacement isn't available on the free trial. Please upgrade to a paid plan first.",
+      };
+    }
+
     const planRes = await pool.query(
       `select * from replacement_plan where id=$1 and is_active=true`,
       [fk_replacement_plan],

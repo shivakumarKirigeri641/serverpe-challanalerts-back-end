@@ -20,6 +20,7 @@ const verifyRenewPayment = async (p) => {
     mobile_number,
     fk_subscription_plans,
     vehicle_numbers,
+    remove_vehicle_numbers = [],
     razorpay_order_id,
     razorpay_payment_id,
     razorpay_signature,
@@ -97,6 +98,29 @@ const verifyRenewPayment = async (p) => {
         vehicleRows.push(existing.rows[0]);
       } else {
         vehicleRows.push(await insertNewVehicle(user.id, vno));
+      }
+    }
+
+    // 5a) Make sure every covered vehicle is active (a covered plate could have
+    //     been disabled by an earlier downgrade/replacement).
+    if (vehicle_numbers.length) {
+      await pool.query(
+        `update rc_details set is_active=true where fk_users=$1 and reg_no = any($2::text[])`,
+        [user.id, vehicle_numbers],
+      );
+    }
+
+    // 5b) Downgrade: disable the vehicles the user chose to drop (kept for
+    //     history; just hidden from the dashboard via is_active=false).
+    if (Array.isArray(remove_vehicle_numbers) && remove_vehicle_numbers.length) {
+      const toRemove = remove_vehicle_numbers.filter(
+        (v) => !vehicle_numbers.includes(v),
+      );
+      if (toRemove.length) {
+        await pool.query(
+          `update rc_details set is_active=false where fk_users=$1 and reg_no = any($2::text[])`,
+          [user.id, toRemove],
+        );
       }
     }
 

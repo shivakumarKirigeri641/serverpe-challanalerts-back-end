@@ -504,6 +504,9 @@ publicRotuer.post("/subscribe/send-otp", strictLimiter, async (req, res) => {
         data: result.data,
       });
     }
+    // Canonical (normalized) plate from the validator — used for the existence
+    // check so KA01AB1 / KA01AB0001 resolve to the same stored vehicle.
+    const cleanedVehicle = result.data.vehicle_number;
     //check if vehicle mobile exists
     result = await checkIfMobileNumberAlreadySubscribed(
       req?.body?.mobile_number,
@@ -517,7 +520,7 @@ publicRotuer.post("/subscribe/send-otp", strictLimiter, async (req, res) => {
       });
     }
     //check if vehicle already exists
-    result = await checkIfVehicleExists(req?.body?.vehicle_number);
+    result = await checkIfVehicleExists(cleanedVehicle);
     if (false === result.successstatus) {
       return res.status(result.statuscode).json({
         statuscode: result.statuscode,
@@ -662,6 +665,7 @@ publicRotuer.post("/renew/verify-payment", strictLimiter, async (req, res) => {
       mobile_number: cleanedMobile,
       fk_subscription_plans: validation.data.fk_subscription_plans,
       vehicle_numbers: validation.data.vehicle_numbers,
+      remove_vehicle_numbers: validation.data.remove_vehicle_numbers,
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
@@ -701,7 +705,19 @@ publicRotuer.post(
           data: validation.data,
         });
       }
+      const cleanedMobile = String(req?.body?.mobile_number || "")
+        .replace(/\s+/g, "")
+        .replace(/^(\+91|91)/, "");
+      if (!cleanedMobile) {
+        return res.status(400).json({
+          statuscode: 400,
+          powered_by: "ServerPe App Solutions",
+          successstatus: false,
+          message: "mobile_number is required",
+        });
+      }
       const result = await createReplaceVehicleOrder(
+        cleanedMobile,
         validation.data.fk_replacement_plan,
         validation.data.old_vehicle_number,
         validation.data.new_vehicle_number,

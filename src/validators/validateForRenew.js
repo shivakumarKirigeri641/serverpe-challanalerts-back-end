@@ -1,5 +1,4 @@
-const STANDARD_PLATE = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/;
-const BH_PLATE = /^[0-9]{2}BH[0-9]{4}[A-Z]{1,2}$/;
+const { normalizePlate, isValidPlate } = require("../utils/normalizePlate");
 
 const err = (message) => ({
   statuscode: 400,
@@ -33,14 +32,34 @@ const validateForRenew = (req) => {
 
     const cleaned = [];
     for (const raw of vehicle_numbers) {
-      const v = String(raw || "").toUpperCase().replace(/[\s-]+/g, "");
-      if (!STANDARD_PLATE.test(v) && !BH_PLATE.test(v)) {
+      if (!isValidPlate(raw)) {
         return err(`Invalid vehicle number: ${raw}`);
       }
+      const v = normalizePlate(raw);
       if (cleaned.includes(v)) {
         return err(`Duplicate vehicle number: ${v}`);
       }
       cleaned.push(v);
+    }
+
+    // Optional: current vehicles to remove (disable) on a downgrade. Plates are
+    // cleaned & validated; any that are also being covered are ignored.
+    let remove_vehicle_numbers = req?.body?.remove_vehicle_numbers;
+    if (typeof remove_vehicle_numbers === "string") {
+      remove_vehicle_numbers = remove_vehicle_numbers.split(",");
+    }
+    const cleanedRemove = [];
+    if (Array.isArray(remove_vehicle_numbers)) {
+      for (const raw of remove_vehicle_numbers) {
+        if (!String(raw || "").trim()) continue;
+        if (!isValidPlate(raw)) {
+          return err(`Invalid vehicle number: ${raw}`);
+        }
+        const v = normalizePlate(raw);
+        if (!cleaned.includes(v) && !cleanedRemove.includes(v)) {
+          cleanedRemove.push(v);
+        }
+      }
     }
 
     return {
@@ -48,7 +67,11 @@ const validateForRenew = (req) => {
       successstatus: true,
       powered_by: "ServerPe App Solutions",
       message: "Renewal payload validated",
-      data: { fk_subscription_plans: planId, vehicle_numbers: cleaned },
+      data: {
+        fk_subscription_plans: planId,
+        vehicle_numbers: cleaned,
+        remove_vehicle_numbers: cleanedRemove,
+      },
     };
   } catch (error) {
     return {

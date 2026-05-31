@@ -1,5 +1,4 @@
-const STANDARD_PLATE = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/;
-const BH_PLATE = /^[0-9]{2}BH[0-9]{4}[A-Z]{1,2}$/;
+const { normalizePlate, isValidPlate } = require("../utils/normalizePlate");
 
 const err = (message) => ({
   statuscode: 400,
@@ -8,10 +7,6 @@ const err = (message) => ({
   message,
   data: null,
 });
-
-const cleanPlate = (raw) =>
-  String(raw || "").toUpperCase().replace(/[\s-]+/g, "");
-const isValidPlate = (v) => STANDARD_PLATE.test(v) || BH_PLATE.test(v);
 
 /**
  * Validates the replace-vehicle payload used by /replace-vehicle/create-order
@@ -26,17 +21,19 @@ const validateForReplace = (req) => {
       return err("fk_replacement_plan is required");
     }
 
-    const oldVehicle = cleanPlate(req?.body?.old_vehicle_number);
-    const newVehicle = cleanPlate(req?.body?.new_vehicle_number);
+    const rawOld = String(req?.body?.old_vehicle_number || "").trim();
+    const rawNew = String(req?.body?.new_vehicle_number || "").trim();
 
-    if (!oldVehicle) return err("old_vehicle_number is required");
-    if (!newVehicle) return err("new_vehicle_number is required");
-    if (!isValidPlate(oldVehicle)) {
+    if (!rawOld) return err("old_vehicle_number is required");
+    if (!rawNew) return err("new_vehicle_number is required");
+    if (!isValidPlate(rawOld)) {
       return err(`Invalid vehicle number: ${req?.body?.old_vehicle_number}`);
     }
-    if (!isValidPlate(newVehicle)) {
+    if (!isValidPlate(rawNew)) {
       return err(`Invalid vehicle number: ${req?.body?.new_vehicle_number}`);
     }
+    const oldVehicle = normalizePlate(rawOld);
+    const newVehicle = normalizePlate(rawNew);
     if (oldVehicle === newVehicle) {
       return err("The new vehicle must be different from the old one");
     }

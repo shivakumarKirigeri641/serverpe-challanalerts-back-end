@@ -1,3 +1,5 @@
+const { normalizePlate, isValidPlate } = require("../utils/normalizePlate");
+
 const validateForMobileNumberForSubscription = (req) => {
   try {
     const mobile_number =
@@ -57,22 +59,9 @@ const validateForMobileNumberForSubscription = (req) => {
       };
     }
 
-    const cleanedVehicle = vehicle_number
-      .toString()
-      .toUpperCase()
-      .replace(/[\s-]+/g, "");
-
-    // Standard Indian plate: SS DD LL DDDD (e.g., KA01AB1234)
-    // State code (2 letters) + RTO code (1-2 digits) + series (1-3 letters) + number (1-4 digits)
-    const standardPlateRegex = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{1,4}$/;
-
-    // Bharat (BH) series: YY BH DDDD LL (e.g., 22BH1234AA)
-    const bhPlateRegex = /^[0-9]{2}BH[0-9]{4}[A-Z]{1,2}$/;
-
-    if (
-      !standardPlateRegex.test(cleanedVehicle) &&
-      !bhPlateRegex.test(cleanedVehicle)
-    ) {
+    // Modern (KA01AB1234 — number zero-padded to 4), BH (22BH1234AA) or older
+    // (MYE368) plates. See utils/normalizePlate.
+    if (!isValidPlate(vehicle_number)) {
       return {
         statuscode: 400,
         successstatus: false,
@@ -81,6 +70,7 @@ const validateForMobileNumberForSubscription = (req) => {
         data: null,
       };
     }
+    const cleanedVehicle = normalizePlate(vehicle_number);
 
     if (!user_name) {
       return {

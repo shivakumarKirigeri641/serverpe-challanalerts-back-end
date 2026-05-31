@@ -3,6 +3,7 @@ const { connectDB } = require("../../database/connectDB");
 const { getRazorpay } = require("../../utils/razorpayClient");
 const generateInvoicePdf = require("../../temp/generateInvoicePdf");
 const insertNewVehicle = require("./insertNewVehicle");
+const getUserMasterDetails = require("../gets/getUserMasterDetails");
 const pool = connectDB();
 
 /**
@@ -83,10 +84,13 @@ const verifyReplaceVehiclePayment = async (p) => {
     }
     const plan = planRes.rows[0];
 
-    // 5) The user must have an active subscription to swap a vehicle on.
+    // 5) The user must have an active PAID subscription to swap a vehicle on.
     const subRes = await pool.query(
-      `select * from user_subscribed where fk_users=$1 and is_active=true
-       order by id desc limit 1`,
+      `select us.*, sp.price as plan_price
+         from user_subscribed us
+         join subscription_plans sp on sp.id = us.fk_subscription_plans
+        where us.fk_users=$1 and us.is_active=true
+        order by us.id desc limit 1`,
       [user.id],
     );
     if (subRes.rows.length === 0) {
@@ -98,6 +102,17 @@ const verifyReplaceVehiclePayment = async (p) => {
       };
     }
     const subscription = subRes.rows[0];
+
+    // Replacement is a paid-plan benefit — not available on the free trial.
+    if (Number(subscription.plan_price) <= 0) {
+      await pool.query(`ROLLBACK`);
+      return {
+        statuscode: 400,
+        successstatus: false,
+        message:
+          "Vehicle replacement isn't available on the free trial. Please upgrade to a paid plan first.",
+      };
+    }
 
     // 6) The old vehicle must be an active vehicle owned by this user.
     const oldRes = await pool.query(
@@ -257,11 +272,22 @@ const verifyReplaceVehiclePayment = async (p) => {
 
     await pool.query(`COMMIT`);
 
+    // Fresh dashboard snapshot (post-commit) so the client can update in place
+    // — the retired vehicle drops off and the new one appears immediately.
+    let dashboard = null;
+    try {
+      const master = await getUserMasterDetails(user.mobile_number);
+      if (master.successstatus) dashboard = master.data;
+    } catch (_) {
+      /* non-fatal: the swap is already committed; client can re-login to refresh */
+    }
+
     return {
       statuscode: 200,
       successstatus: true,
       message: "Payment verified and vehicle replaced",
       data: {
+        dashboard,
         user_details: {
           user_name: user.user_name,
           mobile_number: user.mobile_number,

@@ -1,3 +1,5 @@
+const { normalizePlate, isValidPlate } = require("../utils/normalizePlate");
+
 const err = (message) => ({
   statuscode: 400,
   successstatus: false,
@@ -43,13 +45,10 @@ const validateForVerifyOtpLogin = (req) => {
 
     if (!isNonEmptyString(vehicle_number))
       return err("vehicle_number is required");
-    const cleanedVehicle = vehicle_number
-      .toString()
-      .toUpperCase()
-      .replace(/[\s-]+/g, "");
-    if (!/^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{1,4}$/.test(cleanedVehicle)) {
+    if (!isValidPlate(vehicle_number)) {
       return err("Invalid vehicle_number format");
     }
+    const cleanedVehicle = normalizePlate(vehicle_number);
 
     if (
       fk_states_unions === undefined ||
