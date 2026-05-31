@@ -19,7 +19,9 @@ const getUserMasterDetails = async (mobile_number) => {
     //rc — one entry per vehicle the user owns
     let vehicle_subscriptoin_details = [];
     const result_rc = await pool.query(
-      `select id, reg_no, vehicle_manufacturer_name, model, fuel_type, vehicle_colour, vehicle_class, vehicle_insurance_upto, permit_valid_from, permit_valid_upto, national_permit_upto, pucc_upto from rc_details where fk_users=$1 order by created_at`,
+      // coalesce keeps pre-migration rows (no is_active column value) visible;
+      // a replaced vehicle is retired by setting is_active=false.
+      `select id, reg_no, vehicle_manufacturer_name, model, fuel_type, vehicle_colour, vehicle_class, vehicle_insurance_upto, permit_valid_from, permit_valid_upto, national_permit_upto, pucc_upto from rc_details where fk_users=$1 and coalesce(is_active, true)=true order by created_at`,
       [result_user.rows[0].id],
     );
 

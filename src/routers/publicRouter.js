@@ -7,6 +7,10 @@ const createRenewOrder = require("../repos/insertions/createRenewOrder");
 const verifyRenewPayment = require("../repos/insertions/verifyRenewPayment");
 const getInvoicePath = require("../repos/gets/getInvoicePath");
 const validateForRenew = require("../validators/validateForRenew");
+const validateForReplace = require("../validators/validateForReplace");
+const getReplacementPlans = require("../repos/gets/getReplacementPlans");
+const createReplaceVehicleOrder = require("../repos/insertions/createReplaceVehicleOrder");
+const verifyReplaceVehiclePayment = require("../repos/insertions/verifyReplaceVehiclePayment");
 const getQueryTypes = require("../repos/gets/getQueryTypes");
 const getPlans = require("../repos/gets/getPlans");
 const getFeedbacks = require("../repos/gets/getFeedbacks");
@@ -136,6 +140,26 @@ publicRotuer.get("/subscription-plans-withtrail", async (req, res) => {
 publicRotuer.get("/subscription-plans", async (req, res) => {
   try {
     const result = await getPlans(false);
+    return res.status(result.statuscode).json({
+      statuscode: result.statuscode,
+      powered_by: "ServerPe App Solutions",
+      successstatus: result.successstatus,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      statuscode: 500,
+      powered_by: "ServerPe App Solutions",
+      successstatus: false,
+      message: `Internal server error. Error:${err.message}`,
+    });
+  } finally {
+  }
+});
+publicRotuer.get("/replace-vehicle-plans", async (req, res) => {
+  try {
+    const result = await getReplacementPlans();
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
       powered_by: "ServerPe App Solutions",
@@ -658,6 +682,113 @@ publicRotuer.post("/renew/verify-payment", strictLimiter, async (req, res) => {
     });
   }
 });
+
+/* ----------------------- replace vehicle / payment ----------------------- */
+
+// Create a Razorpay order for replacing a vehicle on an active subscription.
+publicRotuer.post(
+  "/replace-vehicle/create-order",
+  strictLimiter,
+  async (req, res) => {
+    try {
+      const validation = validateForReplace(req);
+      if (false === validation.successstatus) {
+        return res.status(validation.statuscode).json({
+          statuscode: validation.statuscode,
+          powered_by: "ServerPe App Solutions",
+          successstatus: validation.successstatus,
+          message: validation.message,
+          data: validation.data,
+        });
+      }
+      const result = await createReplaceVehicleOrder(
+        validation.data.fk_replacement_plan,
+        validation.data.old_vehicle_number,
+        validation.data.new_vehicle_number,
+      );
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+        data: result.data,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        statuscode: 500,
+        powered_by: "ServerPe App Solutions",
+        successstatus: false,
+        message: `Internal server error. Error:${err.message}`,
+      });
+    }
+  },
+);
+
+// Verify a Razorpay payment, swap the vehicle, record it, persist payment+invoice.
+publicRotuer.post(
+  "/replace-vehicle/verify-payment",
+  strictLimiter,
+  async (req, res) => {
+    try {
+      const validation = validateForReplace(req);
+      if (false === validation.successstatus) {
+        return res.status(validation.statuscode).json({
+          statuscode: validation.statuscode,
+          powered_by: "ServerPe App Solutions",
+          successstatus: validation.successstatus,
+          message: validation.message,
+          data: validation.data,
+        });
+      }
+      const {
+        mobile_number,
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+      } = req.body || {};
+      if (
+        !mobile_number ||
+        !razorpay_order_id ||
+        !razorpay_payment_id ||
+        !razorpay_signature
+      ) {
+        return res.status(400).json({
+          statuscode: 400,
+          powered_by: "ServerPe App Solutions",
+          successstatus: false,
+          message:
+            "mobile_number and razorpay_order_id/payment_id/signature are required",
+        });
+      }
+      const cleanedMobile = String(mobile_number)
+        .replace(/\s+/g, "")
+        .replace(/^(\+91|91)/, "");
+      const result = await verifyReplaceVehiclePayment({
+        mobile_number: cleanedMobile,
+        fk_replacement_plan: validation.data.fk_replacement_plan,
+        old_vehicle_number: validation.data.old_vehicle_number,
+        new_vehicle_number: validation.data.new_vehicle_number,
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+      });
+      return res.status(result.statuscode).json({
+        statuscode: result.statuscode,
+        powered_by: "ServerPe App Solutions",
+        successstatus: result.successstatus,
+        message: result.message,
+        data: result.data,
+      });
+    } catch (err) {
+      return res.status(500).json({
+        statuscode: 500,
+        powered_by: "ServerPe App Solutions",
+        successstatus: false,
+        message: `Internal server error. Error:${err.message}`,
+      });
+    }
+  },
+);
 
 // Download a generated GST invoice PDF.
 publicRotuer.get("/invoice/:invoice_id", async (req, res) => {
