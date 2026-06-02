@@ -565,7 +565,8 @@ publicRotuer.post("/subscribe/verify-otp", strictLimiter, async (req, res) => {
     );
     if (true === result.successstatus) {
       //subscribe teh vehicle and activate the free trail
-      result = await subscribeUser(
+      //result = await subscribeUser(
+      result = await subscribeUser_local(
         mobileResult.data.user_name,
         mobileResult.data.mobile_number,
         mobileResult.data.vehicle_number,

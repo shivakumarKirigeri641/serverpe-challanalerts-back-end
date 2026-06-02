@@ -1,91 +1,89 @@
 const { connectDB } = require("../../database/connectDB");
-const axios = require("axios");
-const getChallan = require("../../temp/getChallan");
-const getFastag = require("../../temp/getFastag");
-const getRC = require("../../temp/getRC");
+const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
 const getRCInsertQuery = require("../../utils/getRCInsertQuery");
 const getFastagInsertQuery = require("../../utils/getFastagInsertQuery");
 const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
 const pool = connectDB();
+
 const subscribeUser = async (
   user_name,
   mobile_number,
   vehicle_number,
   fk_states_unions,
 ) => {
+  let client;
   try {
-    await pool.query(`BEGIN`);
-    const result = await pool.query(
-      `insert into users(user_name, mobile_number, fk_states_unions) values ($1,$2,$3) returning *;`,
+    // 1) External lookups FIRST — never hold a pooled DB connection open across
+    //    these slow HTTP round-trips (that's what exhausts the pool under load).
+    const {
+      rc: rc_external_details,
+      challan: challan_external_details,
+      fastag: fastag_external_details,
+    } = await fetchVehicleExternalDetails(vehicle_number);
+
+    // 2) One dedicated connection for the whole transaction. Using pool.query()
+    //    for BEGIN/…/COMMIT would scatter the statements across different
+    //    connections and break atomicity under concurrency.
+    client = await pool.connect();
+    await client.query(`BEGIN`);
+
+    // 3) Serialize concurrent subscribes for THIS mobile number only. Other
+    //    users across India are unaffected — this is a per-key lock, not a table
+    //    lock — and it's released automatically on COMMIT/ROLLBACK.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      mobile_number,
+    ]);
+
+    // 4) Insert the user. The unique constraint on mobile_number + ON CONFLICT
+    //    makes a duplicate subscribe a no-op instead of a second account.
+    const result = await client.query(
+      `insert into users(user_name, mobile_number, fk_states_unions) values ($1,$2,$3)
+       on conflict (mobile_number) do nothing returning *;`,
       [user_name, mobile_number, fk_states_unions],
     );
     if (0 === result.rows.length) {
+      await client.query(`ROLLBACK`);
       return {
-        statuscode: 500,
+        statuscode: 409,
         powered_by: "ServerPe App Solutions",
         successstatus: false,
-        message: `Failed to insert user. Error:${err.message}`,
+        message: `User already subscribed in platform!`,
       };
     }
-    const rc_external_details = await axios.post(
-      process.env.IDS_EXTERNAL_API_RC,
-      {
-        api_id: process.env.APIID,
-        api_key: process.env.IDS_API_KEY,
-        token_id: process.env.TOKEN_ID,
-        reg_no: vehicle_number,
-      },
-    );
-    const challan_external_details = await axios.post(
-      process.env.IDS_EXTERNAL_API_CHALLAN,
-      {
-        api_id: process.env.APIID,
-        api_key: process.env.IDS_API_KEY,
-        token_id: process.env.TOKEN_ID,
-        reg_no: vehicle_number,
-      },
-    );
-    const fastag_external_details = await axios.post(
-      process.env.IDS_EXTERNAL_API_FASTAG,
-      {
-        api_id: process.env.APIID,
-        api_key: process.env.IDS_API_KEY,
-        token_id: process.env.TOKEN_ID,
-        vehicle_num: vehicle_number,
-      },
-    );
+    const userId = result.rows[0].id;
+
     let { myqueryrc, valuesrc } = getRCInsertQuery(
-      result.rows[0].id,
+      userId,
       rc_external_details?.data?.data,
     );
-    const result_rc = await pool.query(myqueryrc, valuesrc);
+    const result_rc = await client.query(myqueryrc, valuesrc);
+    const rcId = result_rc.rows[0].id;
+
     let result_challans = [];
     for (
       let i = 0;
       i < challan_external_details?.data?.data?.echallan_count;
       i++
     ) {
-      let { myquerych, valuesch } = getChallanInsertQuery(
-        result_rc.rows[0].id,
-        challan_external_details?.data?.data?.data[i],
+      const item = challan_external_details?.data?.data?.data[i];
+      let { myquerych, valuesch } = getChallanInsertQuery(rcId, item);
+      // challan_no is globally unique; skip an already-stored challan instead of
+      // aborting the whole subscription.
+      const query = myquerych.replace(
+        /\s*returning/i,
+        " ON CONFLICT (challan_no) DO NOTHING returning",
       );
-      let tempchallan = await pool.query(myquerych, valuesch);
+      let tempchallan = await client.query(query, valuesch);
+      if (tempchallan.rows.length === 0) continue; // duplicate challan_no — skipped
       //insert violations
       let violation_details_array = [];
-      for (
-        let j = 0;
-        j <
-        challan_external_details?.data?.data?.data[i].violation_details?.length;
-        j++
-      ) {
-        const violations = await pool.query(
+      for (let j = 0; j < (item.violation_details?.length || 0); j++) {
+        const violations = await client.query(
           `insert into violation_details (fk_challan_details, offence, penalty) values ($1,$2,$3) returning *`,
           [
             tempchallan.rows[0].id,
-            challan_external_details?.data?.data?.data[i].violation_details[j]
-              .offence,
-            challan_external_details?.data?.data?.data[i].violation_details[j]
-              .penalty,
+            item.violation_details[j].offence,
+            item.violation_details[j].penalty,
           ],
         );
         violation_details_array.push(violations.rows[0]);
@@ -95,25 +93,27 @@ const subscribeUser = async (
         violataion_data: violation_details_array,
       });
     }
-    //let fastag = getFastag(result_rc.rows[0].id);
+
     let result_fastag = null;
     if (fastag_external_details?.data?.data?.data?.data) {
       let { myqueryft, valuesft } = getFastagInsertQuery(
-        result_rc.rows[0].id,
+        rcId,
         fastag_external_details?.data?.data?.data?.data,
       );
-      const result_fastag = await pool.query(myqueryft, valuesft);
+      // assign to the outer variable (the previous `const` here shadowed it, so
+      // the fastag row never made it into the response).
+      result_fastag = await client.query(myqueryft, valuesft);
     }
     //insert into user_subscribed
-    let subscription_plans = await pool.query(
+    let subscription_plans = await client.query(
       `select *from subscription_plans where price=0`,
     );
-    let result_subscribed_details = await pool.query(
+    let result_subscribed_details = await client.query(
       `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on) values ($1,$2,now(),
     now() + interval '5 minutes') returning *`,
-      [result.rows[0].id, subscription_plans.rows[0].id],
+      [userId, subscription_plans.rows[0].id],
     );
-    await pool.query(`COMMIT`);
+    await client.query(`COMMIT`);
     //alert here to user & as well as for admin
     //alert messages here
 
@@ -141,13 +141,21 @@ const subscribeUser = async (
       },
     };
   } catch (err) {
-    await pool.query(`ROLLBACK`);
+    if (client) {
+      try {
+        await client.query(`ROLLBACK`);
+      } catch (_) {
+        /* connection may be broken; release() below discards it */
+      }
+    }
     return {
       statuscode: 500,
       powered_by: "ServerPe App Solutions",
       successstatus: false,
       message: `Failed in subscription. Error:${err.message}`,
     };
+  } finally {
+    if (client) client.release();
   }
 };
 module.exports = subscribeUser;

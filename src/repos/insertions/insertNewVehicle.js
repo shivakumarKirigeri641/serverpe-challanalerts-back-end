@@ -1,54 +1,64 @@
 const axios = require("axios");
-const { connectDB } = require("../../database/connectDB");
 const getRCInsertQuery = require("../../utils/getRCInsertQuery");
 const getFastagInsertQuery = require("../../utils/getFastagInsertQuery");
 const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
-const pool = connectDB();
 
 /**
- * Insert a brand-new vehicle (RC + challans + violations + fastag) for a user.
+ * Fetch a vehicle's RC / challan / fastag details from the external IDS APIs.
  *
- * Fetches the RC / challan / fastag details from the external IDS APIs and
- * persists them in one go. Shared by the renewal and replace-vehicle flows, so
- * it assumes the caller has already opened a transaction (BEGIN).
+ * Network-only (NO database work). Callers should run this BEFORE opening their
+ * transaction so the slow external HTTP round-trips don't hold a pooled DB
+ * connection open — holding a connection across these calls is what exhausts
+ * the pool and causes the "downtime" under parallel load.
  *
- * @param {number} fk_users        owning user id
- * @param {string} vehicle_number  cleaned registration plate
- * @returns the inserted rc_details row (id, reg_no, manufacturer, model, ...)
+ * @param {string} vehicle_number cleaned registration plate
+ * @returns {Promise<{rc:object, challan:object, fastag:object}>} raw API responses
  */
-async function insertNewVehicle(fk_users, vehicle_number) {
-  const rc_external_details = await axios.post(
-    process.env.IDS_EXTERNAL_API_RC,
-    {
+async function fetchVehicleExternalDetails(vehicle_number) {
+  const [rc, challan, fastag] = await Promise.all([
+    axios.post(process.env.IDS_EXTERNAL_API_RC, {
       api_id: process.env.APIID,
       api_key: process.env.IDS_API_KEY,
       token_id: process.env.TOKEN_ID,
       reg_no: vehicle_number,
-    },
-  );
-  const challan_external_details = await axios.post(
-    process.env.IDS_EXTERNAL_API_CHALLAN,
-    {
+    }),
+    axios.post(process.env.IDS_EXTERNAL_API_CHALLAN, {
       api_id: process.env.APIID,
       api_key: process.env.IDS_API_KEY,
       token_id: process.env.TOKEN_ID,
       reg_no: vehicle_number,
-    },
-  );
-  const fastag_external_details = await axios.post(
-    process.env.IDS_EXTERNAL_API_FASTAG,
-    {
+    }),
+    axios.post(process.env.IDS_EXTERNAL_API_FASTAG, {
       api_id: process.env.APIID,
       api_key: process.env.IDS_API_KEY,
       token_id: process.env.TOKEN_ID,
       vehicle_num: vehicle_number,
-    },
-  );
-  const rc = rc_external_details;
-  const challan = challan_external_details;
-  const fastag = fastag_external_details;
+    }),
+  ]);
+  return { rc, challan, fastag };
+}
+
+/**
+ * Insert a brand-new vehicle (RC + challans + violations + fastag) for a user,
+ * using the caller's transaction `client` so the writes are part of the same
+ * atomic transaction (and the same advisory-locked section).
+ *
+ * Pass `prefetched` (from fetchVehicleExternalDetails) to skip the network I/O
+ * while the transaction is open. If omitted, the details are fetched inline
+ * (kept for backwards-compatible callers, but prefer prefetching).
+ *
+ * @param {import('pg').PoolClient} client  the open transaction client
+ * @param {number} fk_users        owning user id
+ * @param {string} vehicle_number  cleaned registration plate
+ * @param {{rc:object,challan:object,fastag:object}} [prefetched] external details
+ * @returns the inserted rc_details row (id, reg_no, manufacturer, model, ...)
+ */
+async function insertNewVehicle(client, fk_users, vehicle_number, prefetched) {
+  const { rc, challan, fastag } =
+    prefetched || (await fetchVehicleExternalDetails(vehicle_number));
+
   const { myqueryrc, valuesrc } = getRCInsertQuery(fk_users, rc?.data?.data);
-  const result_rc = await pool.query(myqueryrc, valuesrc);
+  const result_rc = await client.query(myqueryrc, valuesrc);
   const rcId = result_rc.rows[0].id;
 
   const count = challan?.data?.data?.echallan_count || 0;
@@ -61,10 +71,10 @@ async function insertNewVehicle(fk_users, vehicle_number) {
       /\s*returning/i,
       " ON CONFLICT (challan_no) DO NOTHING returning",
     );
-    const tempchallan = await pool.query(query, valuesch);
+    const tempchallan = await client.query(query, valuesch);
     if (tempchallan.rows.length === 0) continue; // duplicate challan_no — skipped
     for (let j = 0; j < (item.violation_details?.length || 0); j++) {
-      await pool.query(
+      await client.query(
         `insert into violation_details (fk_challan_details, offence, penalty) values ($1,$2,$3)`,
         [
           tempchallan.rows[0].id,
@@ -78,9 +88,10 @@ async function insertNewVehicle(fk_users, vehicle_number) {
   const fastagData = fastag?.data?.data?.data?.data;
   if (fastagData) {
     const { myqueryft, valuesft } = getFastagInsertQuery(rcId, fastagData);
-    await pool.query(myqueryft, valuesft);
+    await client.query(myqueryft, valuesft);
   }
   return result_rc.rows[0];
 }
 
 module.exports = insertNewVehicle;
+module.exports.fetchVehicleExternalDetails = fetchVehicleExternalDetails;

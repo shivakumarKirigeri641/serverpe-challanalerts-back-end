@@ -3,7 +3,9 @@ const { connectDB } = require("../../database/connectDB");
 const { getRazorpay } = require("../../utils/razorpayClient");
 const generateInvoicePdf = require("../../temp/generateInvoicePdf");
 const insertNewVehicle = require("./insertNewVehicle");
+const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
 const getUserMasterDetails = require("../gets/getUserMasterDetails");
+const getNextInvoiceId = require("../../utils/getNextInvoiceId");
 const pool = connectDB();
 
 /**
@@ -45,22 +47,51 @@ const verifyReplaceVehiclePayment = async (p) => {
     };
   }
 
+  let client;
   try {
     // 2) Pull the captured payment entity from Razorpay (source of truth).
     const razorpay = getRazorpay();
     const pay = await razorpay.payments.fetch(razorpay_payment_id);
 
-    await pool.query(`BEGIN`);
+    // 2a) Prefetch the new vehicle's external details BEFORE opening the
+    //     transaction (the new plate must not already exist), so the slow HTTP
+    //     calls don't hold a pooled connection + the advisory lock open.
+    const newVehiclePrefetch =
+      await fetchVehicleExternalDetails(new_vehicle_number);
+
+    // 2b) One dedicated connection for the whole transaction.
+    client = await pool.connect();
+    await client.query(`BEGIN`);
+
+    // 2c) Serialize this user's money-mutating operations — per-key lock, so
+    //     other users are unaffected; auto-released on COMMIT/ROLLBACK.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      mobile_number,
+    ]);
+
+    // 2d) Idempotency: a Razorpay payment can only be processed once.
+    const already = await client.query(
+      `select id from payments where payment_id=$1`,
+      [pay.id],
+    );
+    if (already.rows.length > 0) {
+      await client.query(`ROLLBACK`);
+      return {
+        statuscode: 409,
+        successstatus: false,
+        message: "This payment has already been processed",
+      };
+    }
 
     // 3) User must exist (replacement happens from the dashboard, post-OTP).
-    const userRes = await pool.query(
+    const userRes = await client.query(
       `select u.*, su.state_union_name from users u
        left join states_unions su on su.id = u.fk_states_unions
        where u.mobile_number=$1 and u.is_active=true`,
       [mobile_number],
     );
     if (userRes.rows.length === 0) {
-      await pool.query(`ROLLBACK`);
+      await client.query(`ROLLBACK`);
       return {
         statuscode: 404,
         successstatus: false,
@@ -70,12 +101,12 @@ const verifyReplaceVehiclePayment = async (p) => {
     const user = userRes.rows[0];
 
     // 4) Replacement plan (the swap fee).
-    const planRes = await pool.query(
+    const planRes = await client.query(
       `select * from replacement_plan where id=$1 and is_active=true and price>0`,
       [fk_replacement_plan],
     );
     if (planRes.rows.length === 0) {
-      await pool.query(`ROLLBACK`);
+      await client.query(`ROLLBACK`);
       return {
         statuscode: 404,
         successstatus: false,
@@ -85,7 +116,7 @@ const verifyReplaceVehiclePayment = async (p) => {
     const plan = planRes.rows[0];
 
     // 5) The user must have an active PAID subscription to swap a vehicle on.
-    const subRes = await pool.query(
+    const subRes = await client.query(
       `select us.*, sp.price as plan_price
          from user_subscribed us
          join subscription_plans sp on sp.id = us.fk_subscription_plans
@@ -94,7 +125,7 @@ const verifyReplaceVehiclePayment = async (p) => {
       [user.id],
     );
     if (subRes.rows.length === 0) {
-      await pool.query(`ROLLBACK`);
+      await client.query(`ROLLBACK`);
       return {
         statuscode: 400,
         successstatus: false,
@@ -105,7 +136,7 @@ const verifyReplaceVehiclePayment = async (p) => {
 
     // Replacement is a paid-plan benefit — not available on the free trial.
     if (Number(subscription.plan_price) <= 0) {
-      await pool.query(`ROLLBACK`);
+      await client.query(`ROLLBACK`);
       return {
         statuscode: 400,
         successstatus: false,
@@ -115,12 +146,12 @@ const verifyReplaceVehiclePayment = async (p) => {
     }
 
     // 6) The old vehicle must be an active vehicle owned by this user.
-    const oldRes = await pool.query(
+    const oldRes = await client.query(
       `select * from rc_details where reg_no=$1 and fk_users=$2 and is_active=true`,
       [old_vehicle_number, user.id],
     );
     if (oldRes.rows.length === 0) {
-      await pool.query(`ROLLBACK`);
+      await client.query(`ROLLBACK`);
       return {
         statuscode: 404,
         successstatus: false,
@@ -130,27 +161,32 @@ const verifyReplaceVehiclePayment = async (p) => {
     const oldVehicle = oldRes.rows[0];
 
     // 7) The new vehicle must not already exist on the platform.
-    const newExisting = await pool.query(
+    const newExisting = await client.query(
       `select id from rc_details where reg_no=$1`,
       [new_vehicle_number],
     );
     if (newExisting.rows.length > 0) {
-      await pool.query(`ROLLBACK`);
+      await client.query(`ROLLBACK`);
       return {
         statuscode: 400,
         successstatus: false,
         message: "The new vehicle is already present on the platform",
       };
     }
-    const newVehicle = await insertNewVehicle(user.id, new_vehicle_number);
+    const newVehicle = await insertNewVehicle(
+      client,
+      user.id,
+      new_vehicle_number,
+      newVehiclePrefetch,
+    );
 
     // 8) Retire the old vehicle (kept for the audit trail / FK below).
-    await pool.query(`update rc_details set is_active=false where id=$1`, [
+    await client.query(`update rc_details set is_active=false where id=$1`, [
       oldVehicle.id,
     ]);
 
     // 9) Persist the payment (mirror of Razorpay payment entity).
-    const paymentInsert = await pool.query(
+    const paymentInsert = await client.query(
       `insert into payments (
          payment_id, entity, amount, currency, status, order_id, international,
          method, amount_refunded, captured, description, card_id, bank, wallet,
@@ -192,7 +228,7 @@ const verifyReplaceVehiclePayment = async (p) => {
     const paymentRowId = paymentInsert.rows[0].id;
 
     // 10) Record the swap.
-    const replacedRes = await pool.query(
+    const replacedRes = await client.query(
       `insert into user_replaced (
          fk_users, fk_user_subscribed, fk_rc_details_replacing,
          fk_rc_details_replaced, fk_replacement_plan, payment_id
@@ -208,13 +244,13 @@ const verifyReplaceVehiclePayment = async (p) => {
     );
 
     // 11) GST breakup (fee is GST-inclusive) → invoice PDF + invoices row.
-    const gstRes = await pool.query(
+    const gstRes = await client.query(
       `select gst_percent from gst_percents where is_active=true limit 1`,
     );
     const gstPercent = gstRes.rows[0]?.gst_percent ?? 0;
 
     // Seller / GST registration details for the "Sold by" block.
-    const gstDetailsRes = await pool.query(
+    const gstDetailsRes = await client.query(
       `select gd.*, su.state_union_name as gst_state_name
          from gst_details gd
          left join states_unions su on su.id = gd.state_union_id
@@ -222,15 +258,10 @@ const verifyReplaceVehiclePayment = async (p) => {
     );
     const gstDetails = gstDetailsRes.rows[0] || {};
 
-    // Invoice no: INV-YYYYMMDD-<n> where n = today's invoice count + 1.
+    // Invoice no from a contention-free sequence (the old count(*)+1 raced under
+    // concurrent payments). Replacement invoices are prefixed INVR (INV for subs).
     const now = new Date();
-    const yyyymmdd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-    const todayCountRes = await pool.query(
-      `select count(*)::int as c from invoices where created_at::date = current_date`,
-    );
-    const seq = (todayCountRes.rows[0]?.c ?? 0) + 1;
-    // Replacement invoices are prefixed INVR (subscription ones use INV).
-    const invoiceId = `INVR-${yyyymmdd}-${seq}`;
+    const invoiceId = await getNextInvoiceId(client, "INVR");
 
     const invoicePath = await generateInvoicePdf({
       invoice_id: invoiceId,
@@ -256,7 +287,7 @@ const verifyReplaceVehiclePayment = async (p) => {
     });
 
     if (!invoicePath) {
-      await pool.query(`ROLLBACK`);
+      await client.query(`ROLLBACK`);
       return {
         statuscode: 500,
         successstatus: false,
@@ -264,13 +295,13 @@ const verifyReplaceVehiclePayment = async (p) => {
       };
     }
 
-    const invoiceRes = await pool.query(
+    const invoiceRes = await client.query(
       `insert into invoices (fk_users, fk_user_subscribed, payment_id, invoice_id, invoice_path, replacement_flag, fk_replacement_plan)
        values ($1,$2,$3,$4,$5,true,$6) returning *`,
       [user.id, subscription.id, paymentRowId, invoiceId, invoicePath, plan.id],
     );
 
-    await pool.query(`COMMIT`);
+    await client.query(`COMMIT`);
     //alert here to user & as well as for admin abot replaced vehicle
 
     // Fresh dashboard snapshot (post-commit) so the client can update in place
@@ -319,12 +350,20 @@ const verifyReplaceVehiclePayment = async (p) => {
       },
     };
   } catch (err) {
-    await pool.query(`ROLLBACK`);
+    if (client) {
+      try {
+        await client.query(`ROLLBACK`);
+      } catch (_) {
+        /* connection may be broken; release() below discards it */
+      }
+    }
     return {
       statuscode: 500,
       successstatus: false,
       message: `Failed to verify payment. Error: ${err?.error?.description || err.message}`,
     };
+  } finally {
+    if (client) client.release();
   }
 };
 

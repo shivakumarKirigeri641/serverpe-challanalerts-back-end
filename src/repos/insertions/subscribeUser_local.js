@@ -13,28 +13,37 @@ const subscribeUser_local = async (
   vehicle_number,
   fk_states_unions,
 ) => {
+  let client;
   try {
-    await pool.query(`BEGIN`);
-    const result = await pool.query(
-      `insert into users(user_name, mobile_number, fk_states_unions) values ($1,$2,$3) returning *;`,
-      [user_name, mobile_number, fk_states_unions],
-    );
-    if (0 === result.rows.length) {
-      return {
-        statuscode: 500,
-        powered_by: "ServerPe App Solutions",
-        successstatus: false,
-        message: `Failed to insert user. Error:${err.message}`,
-      };
-    }
     const rc_external_details = getRC(vehicle_number);
     const challan_external_details = getChallan(vehicle_number);
     const fastag_external_details = getFastag(vehicle_number);
+
+    // Dedicated connection + per-mobile advisory lock, same as subscribeUser.
+    client = await pool.connect();
+    await client.query(`BEGIN`);
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      mobile_number,
+    ]);
+    const result = await client.query(
+      `insert into users(user_name, mobile_number, fk_states_unions) values ($1,$2,$3)
+       on conflict (mobile_number) do nothing returning *;`,
+      [user_name, mobile_number, fk_states_unions],
+    );
+    if (0 === result.rows.length) {
+      await client.query(`ROLLBACK`);
+      return {
+        statuscode: 409,
+        powered_by: "ServerPe App Solutions",
+        successstatus: false,
+        message: `User already subscribed in platform!`,
+      };
+    }
     let { myqueryrc, valuesrc } = getRCInsertQuery(
       result.rows[0].id,
       rc_external_details?.data?.data,
     );
-    const result_rc = await pool.query(myqueryrc, valuesrc);
+    const result_rc = await client.query(myqueryrc, valuesrc);
     let result_challans = [];
     for (
       let i = 0;
@@ -45,7 +54,7 @@ const subscribeUser_local = async (
         result_rc.rows[0].id,
         challan_external_details?.data?.data?.data[i],
       );
-      let tempchallan = await pool.query(myquerych, valuesch);
+      let tempchallan = await client.query(myquerych, valuesch);
       //insert violations
       let violation_details_array = [];
       for (
@@ -54,7 +63,7 @@ const subscribeUser_local = async (
         challan_external_details?.data?.data?.data[i].violation_details?.length;
         j++
       ) {
-        const violations = await pool.query(
+        const violations = await client.query(
           `insert into violation_details (fk_challan_details, offence, penalty) values ($1,$2,$3) returning *`,
           [
             tempchallan.rows[0].id,
@@ -78,18 +87,18 @@ const subscribeUser_local = async (
         result_rc.rows[0].id,
         fastag_external_details?.data?.data?.data?.data,
       );
-      const result_fastag = await pool.query(myqueryft, valuesft);
+      result_fastag = await client.query(myqueryft, valuesft);
     }
     //insert into user_subscribed
-    let subscription_plans = await pool.query(
+    let subscription_plans = await client.query(
       `select *from subscription_plans where price=0`,
     );
-    let result_subscribed_details = await pool.query(
+    let result_subscribed_details = await client.query(
       `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on) values ($1,$2,now(),
     now() + interval '5 minutes') returning *`,
       [result.rows[0].id, subscription_plans.rows[0].id],
     );
-    await pool.query(`COMMIT`);
+    await client.query(`COMMIT`);
     //alert messages here
 
     return {
@@ -116,13 +125,21 @@ const subscribeUser_local = async (
       },
     };
   } catch (err) {
-    await pool.query(`ROLLBACK`);
+    if (client) {
+      try {
+        await client.query(`ROLLBACK`);
+      } catch (_) {
+        /* connection may be broken; release() below discards it */
+      }
+    }
     return {
       statuscode: 500,
       powered_by: "ServerPe App Solutions",
       successstatus: false,
       message: `Failed in subscription. Error:${err.message}`,
     };
+  } finally {
+    if (client) client.release();
   }
 };
 module.exports = subscribeUser_local;
