@@ -42,6 +42,7 @@ const getLiabilitiesPolicy = require("../repos/gets/getLiabilitiesPolicy");
 const getExchangeVehicleNumberPolicy = require("../repos/gets/getExchangeVehicleNumberPolicy");
 const validateForVerifyOtpDashboard = require("../validators/validateForVerifyOtpDashboard");
 const checkIfMobileNumberForDashboard = require("../repos/checks/checkIfMobileNumberForDashboard");
+const { generateOTP } = require("../utils/generateOTP");
 
 const publicRotuer = express.Router();
 publicRotuer.get("/query-types", async (req, res) => {
@@ -437,7 +438,7 @@ publicRotuer.post("/dashboard/send-otp", strictLimiter, async (req, res) => {
         message: result.message,
       });
     }
-    let otp = "1234";
+    let otp = generateOTP();
     result = await insertOtpForSubscription(req?.body?.mobile_number, otp);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
@@ -529,7 +530,7 @@ publicRotuer.post("/subscribe/send-otp", strictLimiter, async (req, res) => {
         message: result.message,
       });
     }
-    let otp = "1234";
+    let otp = generateOTP();
     result = await insertOtpForSubscription(req.body.mobile_number, otp);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,

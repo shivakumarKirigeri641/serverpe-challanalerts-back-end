@@ -1,3 +1,4 @@
+const sendOtpSMS = require("../../comms/sendOtpSMS");
 const { connectDB } = require("../../database/connectDB");
 const pool = connectDB();
 const insertOtpForSubscription = async (mobile_number, otp) => {
@@ -18,6 +19,12 @@ const insertOtpForSubscription = async (mobile_number, otp) => {
       `insert into users (user_name, mobile_number, email) values ($1,$2,$3) returning *;`,
       [user_name, mobile_number, email],
     );*/
+    //send sms
+    const result_sms_response_details = await sendOtpSMS(
+      pool,
+      mobile_number,
+      otp,
+    );
     return {
       statuscode: 201,
       powered_by: "ServerPe App Solutions",
