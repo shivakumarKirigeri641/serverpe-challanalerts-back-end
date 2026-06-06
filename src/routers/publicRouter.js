@@ -531,6 +531,7 @@ publicRotuer.post("/subscribe/send-otp", strictLimiter, async (req, res) => {
       });
     }
     let otp = generateOTP();
+    //let otp = "1234";
     result = await insertOtpForSubscription(req.body.mobile_number, otp);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
@@ -567,7 +568,7 @@ publicRotuer.post("/subscribe/verify-otp", strictLimiter, async (req, res) => {
     if (true === result.successstatus) {
       //subscribe teh vehicle and activate the free trail
       //result = await subscribeUser(
-      result = await subscribeUser_local(
+      result = await subscribeUser(
         mobileResult.data.user_name,
         mobileResult.data.mobile_number,
         mobileResult.data.vehicle_number,

@@ -72,6 +72,7 @@ const getRCInsertQuery = (id, data) => {
         permit_valid_from,
         permit_valid_upto,
         national_permit_upto,
+        rc_expiry_date,
         pucc_upto;
   `;
 

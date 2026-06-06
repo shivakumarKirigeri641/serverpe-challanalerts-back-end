@@ -3,6 +3,8 @@ const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
 const getRCInsertQuery = require("../../utils/getRCInsertQuery");
 const getFastagInsertQuery = require("../../utils/getFastagInsertQuery");
 const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
+const sendWelcomeSMS = require("../../comms/sendWelcomeSMS");
+const sendRCStatusSMS = require("../../comms/sendRCStatusSMS");
 const pool = connectDB();
 
 const subscribeUser = async (
@@ -110,13 +112,37 @@ const subscribeUser = async (
     );
     let result_subscribed_details = await client.query(
       `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on) values ($1,$2,now(),
-    now() + interval '5 minutes') returning *`,
+    now() + interval '30 days') returning *`,
       [userId, subscription_plans.rows[0].id],
     );
     await client.query(`COMMIT`);
     //alert here to user & as well as for admin
     //alert messages here
 
+    //1. send welcome sms
+    const subscriptin_expiry_date = result_subscribed_details.rows[0].expires_on
+      .toISOString()
+      .split("T")[0];
+    await sendWelcomeSMS(
+      pool,
+      vehicle_number,
+      mobile_number,
+      subscriptin_expiry_date,
+    );
+
+    //send RC expiry sms
+    const rc_expiry_date = new Date(result_rc.rows[0].rc_expiry_date);
+    dateOnly = new Date(
+      rc_expiry_date.getFullYear(),
+      rc_expiry_date.getMonth(),
+      rc_expiry_date.getDate(),
+    );
+    await sendRCStatusSMS(
+      pool,
+      mobile_number,
+      vehicle_number,
+      result_rc.rows[0].rc_expiry_date,
+    );
     return {
       statuscode: 200,
       powered_by: "ServerPe App Solutions",
