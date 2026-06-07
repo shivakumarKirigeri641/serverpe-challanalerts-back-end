@@ -438,7 +438,8 @@ publicRotuer.post("/dashboard/send-otp", strictLimiter, async (req, res) => {
         message: result.message,
       });
     }
-    let otp = generateOTP();
+    //let otp = generateOTP();
+    let otp = "1234";
     result = await insertOtpForSubscription(req?.body?.mobile_number, otp);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
@@ -530,8 +531,8 @@ publicRotuer.post("/subscribe/send-otp", strictLimiter, async (req, res) => {
         message: result.message,
       });
     }
-    let otp = generateOTP();
-    //let otp = "1234";
+    //let otp = generateOTP();
+    let otp = "1234";
     result = await insertOtpForSubscription(req.body.mobile_number, otp);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,

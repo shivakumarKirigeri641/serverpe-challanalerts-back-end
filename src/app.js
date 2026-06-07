@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 const cors = require("cors");
 const publicRouter = require("./routers/publicRouter");
+const adminRouter = require("./routers/adminRouter");
 const cookieParser = require("cookie-parser");
 require("dotenv").config();
 const { connectDB } = require("./database/connectDB");
@@ -53,6 +54,16 @@ app.use(
   cryptoMiddleware,
   apiLogger,
   publicRouter,
+);
+
+/* 🔐 Admin API — same transparent payload encryption (no apiLogger; admin
+   actions are not user-activity). Auth is enforced inside the router via
+   authMiddleware after the public /auth/* login routes. */
+app.use(
+  "/vehicleowneralerts/platform/admin",
+  globalLimiter,
+  cryptoMiddleware,
+  adminRouter,
 );
 /* DB connections */
 connectDB();
