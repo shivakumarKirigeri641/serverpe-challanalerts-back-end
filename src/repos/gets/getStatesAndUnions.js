@@ -9,6 +9,47 @@ const getStatesAndUnions = async () => {
       is_active=true order by state_union_name;`,
     );
     //test whatsapp
+    /*const response = await axios.post(
+      `https://graph.facebook.com/v25.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: `91900970271`,
+        type: "template",
+        template: {
+          name: "amv_welcome_v1",
+          language: {
+            code: "en",
+          },
+          components: [
+            {
+              type: "body",
+              parameters: [
+                {
+                  type: "text",
+                  text: `Amruta`,
+                },
+                {
+                  type: "text",
+                  text: `KA32R8604`,
+                },
+                {
+                  type: "text",
+                  text: `06-07-2026`,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    console.log("WhatsApp Sent:", response.data);*/
     return {
       statuscode: 200,
       successstatus: true,
