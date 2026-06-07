@@ -94,8 +94,8 @@ const subscribeUser_local = async (
       `select *from subscription_plans where price=0`,
     );
     let result_subscribed_details = await client.query(
-      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on) values ($1,$2,now(),
-    now() + interval '5 minutes') returning *`,
+      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on, expiry_days) values ($1,$2,now(),
+    now() + interval '5 minutes', ((now() + interval '5 minutes')::date - CURRENT_DATE)) returning *`,
       [result.rows[0].id, subscription_plans.rows[0].id],
     );
     await client.query(`COMMIT`);

@@ -180,8 +180,9 @@ const verifyRenewPayment = async (p) => {
       [user.id],
     );
     const subRes = await client.query(
-      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on)
-       values ($1,$2, now(), now() + ($3 || ' days')::interval) returning *`,
+      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on, expiry_days)
+       values ($1,$2, now(), now() + ($3 || ' days')::interval,
+               ((now() + ($3 || ' days')::interval)::date - CURRENT_DATE)) returning *`,
       [user.id, plan.id, String(plan.validity_days)],
     );
     const subscription = subRes.rows[0];

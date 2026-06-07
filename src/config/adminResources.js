@@ -337,6 +337,7 @@ const resources = {
       c("plan_name", "Plan"),
       c("active_on", "Active On"),
       c("expires_on", "Expires On"),
+      c("expiry_days", "Days Left"),
       c("is_active", "Active"),
     ],
   },
@@ -538,6 +539,7 @@ const resources = {
       c("insurance_expiry_remaining_datys", "Insurance Days Left"),
       c("pucc_upto", "PUCC Upto"),
       c("pucc_expiry_remaining_datys", "PUCC Days Left"),
+      c("challan_days", "Challan Day (0-15)"),
       c("is_active", "Active"),
     ],
     children: [

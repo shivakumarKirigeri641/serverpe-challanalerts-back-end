@@ -111,8 +111,8 @@ const subscribeUser = async (
       `select *from subscription_plans where price=0`,
     );
     let result_subscribed_details = await client.query(
-      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on) values ($1,$2,now(),
-    now() + interval '30 days') returning *`,
+      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on, expiry_days) values ($1,$2,now(),
+    now() + interval '30 days', ((now() + interval '30 days')::date - CURRENT_DATE)) returning *`,
       [userId, subscription_plans.rows[0].id],
     );
     await client.query(`COMMIT`);
