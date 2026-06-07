@@ -533,7 +533,11 @@ const resources = {
       c("vehicle_manufacturer_name", "Maker"),
       c("model", "Model"),
       c("rc_expiry_date", "RC Expiry"),
+      c("rc_expiry_remaining_datys", "RC Days Left"),
       c("vehicle_insurance_upto", "Insurance Upto"),
+      c("insurance_expiry_remaining_datys", "Insurance Days Left"),
+      c("pucc_upto", "PUCC Upto"),
+      c("pucc_expiry_remaining_datys", "PUCC Days Left"),
       c("is_active", "Active"),
     ],
     children: [

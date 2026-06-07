@@ -10,6 +10,7 @@ const { globalLimiter } = require("./utils/rateLimiters");
 const cryptoMiddleware = require("./middlewares/cryptoMiddleware");
 const apiLogger = require("./middlewares/apiLogger");
 const backupApiLogs = require("./repos/jobs/backupApiLogs");
+const recalcRcExpiryDays = require("./repos/jobs/recalcRcExpiryDays");
 //const sweepStaleReservations = require("./repos/jobs/sweepStaleReservations");
 const PORT = process.env.PORT;
 const app = express();
@@ -76,6 +77,15 @@ setInterval(() => {
   backupApiLogs().catch(() => {});
 }, API_LOG_BACKUP_TICK_MS);
 backupApiLogs().catch(() => {});
+
+/* 🗓️ rc_details expiry "remaining days" refresh: re-derive the cached day
+   counts against today's date every 24h (and once on boot) so they don't go
+   stale after the insert-time snapshot. */
+const RC_EXPIRY_RECALC_TICK_MS = 24 * 60 * 60 * 1000;
+setInterval(() => {
+  recalcRcExpiryDays().catch(() => {});
+}, RC_EXPIRY_RECALC_TICK_MS);
+recalcRcExpiryDays().catch(() => {});
 
 // const RESERVATION_SWEEP_INTERVAL_MS =
 //   Number(process.env.RESERVATION_SWEEP_INTERVAL_MIN || 5) * 60 * 1000;
