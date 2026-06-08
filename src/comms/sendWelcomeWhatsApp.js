@@ -21,11 +21,6 @@ const sendWelcomeWhatsApp = async (
   expiry_date,
 ) => {
   try {
-    await sendWhatsAppTemplate(toWhatsAppNumber(mobile_number), "amv_welcome_v1", [
-      user_name,
-      vehicle_number,
-      expiry_date,
-    ]);
   } catch (err) {
     console.error(
       "Welcome WhatsApp failed, falling back to SMS:",

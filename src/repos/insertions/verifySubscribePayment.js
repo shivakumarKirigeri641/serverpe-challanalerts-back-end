@@ -7,6 +7,10 @@ const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
 const getNextInvoiceId = require("../../utils/getNextInvoiceId");
 const sendWelcomeWhatsApp = require("../../comms/sendWelcomeWhatsApp");
 const sendRCStatusSMS = require("../../comms/sendRCStatusSMS");
+const {
+  sendWhatsAppTemplate,
+  toWhatsAppNumber,
+} = require("../../comms/sendWhatsApp");
 const pool = connectDB();
 
 /**
@@ -235,24 +239,6 @@ const verifySubscribePayment = async (p) => {
     );
     await client.query(`COMMIT`);
 
-    // 8) Welcome (WhatsApp, SMS fallback) + RC status alerts.
-    const subscriptionExpiryDate = subscription.expires_on
-      .toISOString()
-      .split("T")[0];
-    await sendWelcomeWhatsApp(
-      pool,
-      user.user_name,
-      vehicle_number,
-      mobile_number,
-      subscriptionExpiryDate,
-    );
-    await sendRCStatusSMS(
-      pool,
-      mobile_number,
-      vehicle_number,
-      rcRow.rc_expiry_date,
-    );
-
     // 9) Read back the challans (+ violations) and fastag just inserted so the
     //    front-end handoff to /dashboard renders them immediately. The dashboard
     //    normalizer (normalizeDashboardData) folds `challan_details` /
@@ -275,6 +261,39 @@ const verifySubscribePayment = async (p) => {
       [rcRow.id],
     );
 
+    // 8) Welcome (WhatsApp, SMS fallback) + RC status alerts.
+    const subscriptionExpiryDate = subscription.expires_on
+      .toISOString()
+      .split("T")[0];
+    await sendWelcomeWhatsApp(
+      pool,
+      user.user_name,
+      vehicle_number,
+      mobile_number,
+      subscriptionExpiryDate,
+    );
+    const nextReportDate = new Date();
+    nextReportDate.setDate(nextReportDate.getDate() + 29);
+    const dateOnly = new Date(
+      nextReportDate.getFullYear(),
+      nextReportDate.getMonth(),
+      nextReportDate.getDate(),
+    );
+    await sendVDHReportWhatsapp(
+      user.user_name,
+      vehicle_number,
+      rcRow.rc_expiry_date,
+      rcRow.vehicle_insurance_upto,
+      rcRow.pucc_upto,
+      fastagRows,
+      dateOnly,
+    );
+    /*await sendRCStatusSMS(
+      pool,
+      mobile_number,
+      vehicle_number,
+      rcRow.rc_expiry_date,
+    );*/
     return {
       statuscode: 200,
       powered_by: "ServerPe App Solutions",
