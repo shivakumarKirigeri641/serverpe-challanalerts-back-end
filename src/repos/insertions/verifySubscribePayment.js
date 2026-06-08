@@ -5,7 +5,7 @@ const generateInvoicePdf = require("../../temp/generateInvoicePdf");
 const insertNewVehicle = require("./insertNewVehicle");
 const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
 const getNextInvoiceId = require("../../utils/getNextInvoiceId");
-const sendWelcomeSMS = require("../../comms/sendWelcomeSMS");
+const sendWelcomeWhatsApp = require("../../comms/sendWelcomeWhatsApp");
 const sendRCStatusSMS = require("../../comms/sendRCStatusSMS");
 const pool = connectDB();
 
@@ -235,12 +235,13 @@ const verifySubscribePayment = async (p) => {
     );
     await client.query(`COMMIT`);
 
-    // 8) Welcome + RC status alerts (same as the old free subscribeUser flow).
+    // 8) Welcome (WhatsApp, SMS fallback) + RC status alerts.
     const subscriptionExpiryDate = subscription.expires_on
       .toISOString()
       .split("T")[0];
-    await sendWelcomeSMS(
+    await sendWelcomeWhatsApp(
       pool,
+      user.user_name,
       vehicle_number,
       mobile_number,
       subscriptionExpiryDate,
