@@ -426,7 +426,6 @@ const verifyRenewPayment = async (p) => {
     }
     //alert admin
     await sendAdminPremiumSubscriptionAlertSMS(
-      pool,
       user.user_name,
       plan.plan_name,
       pay.price,
