@@ -7,6 +7,7 @@ const { sendWhatsApp } = require("../../comms/sendWhatsApp");
 const insertNewVehicle = require("./insertNewVehicle");
 const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
 const getNextInvoiceId = require("../../utils/getNextInvoiceId");
+const sendAdminPremiumSubscriptionAlertSMS = require("../../comms/sendAdminPremiumSubscriptionAlertSMS");
 const pool = connectDB();
 
 /**
@@ -388,6 +389,13 @@ const verifyRenewPayment = async (p) => {
         });
       }
     }
+    //alert admin
+    await sendAdminPremiumSubscriptionAlertSMS(
+      pool,
+      user.user_name,
+      plan.plan_name,
+      pay.price,
+    );
     return {
       statuscode: 200,
       successstatus: true,

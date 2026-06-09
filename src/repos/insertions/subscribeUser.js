@@ -2,6 +2,7 @@ const { connectDB } = require("../../database/connectDB");
 const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
 const sendWelcomeWhatsApp = require("../../comms/sendWelcomeWhatsApp");
 const getRCInsertQuery = require("../../utils/getRCInsertQuery");
+const sendAdminTrailSubscriptionAlertSMS = require("../../comms/sendAdminTrailSubscriptionAlertSMS");
 const getFastagInsertQuery = require("../../utils/getFastagInsertQuery");
 const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
 const sendWelcomeSMS = require("../../comms/sendWelcomeSMS");
@@ -165,6 +166,10 @@ const subscribeUser = async (
       result_fastag ? result_fastag.rows[0].balance : "N/A",
       `N/A for trial subscription.`,
       mobile_number,
+    );
+    await sendAdminTrailSubscriptionAlertSMS(
+      result.rows[0].user_name,
+      vehicle_number,
     );
     return {
       statuscode: 200,
