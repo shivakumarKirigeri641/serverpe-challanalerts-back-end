@@ -1,10 +1,12 @@
 const { connectDB } = require("../../database/connectDB");
 const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
+const sendWelcomeWhatsApp = require("../../comms/sendWelcomeWhatsApp");
 const getRCInsertQuery = require("../../utils/getRCInsertQuery");
 const getFastagInsertQuery = require("../../utils/getFastagInsertQuery");
 const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
 const sendWelcomeSMS = require("../../comms/sendWelcomeSMS");
 const sendRCStatusSMS = require("../../comms/sendRCStatusSMS");
+const sendVDHReportToWhatsapp = require("../../comms/sendVDHReportToWhatsapp");
 const pool = connectDB();
 
 const subscribeUser = async (
@@ -106,21 +108,24 @@ const subscribeUser = async (
       // the fastag row never made it into the response).
       result_fastag = await client.query(myqueryft, valuesft);
     }
-    //insert into user_subscribed
+    //insert into user_subscribed — the free trial plan (is_trial), activated for
+    //its configured validity_days (e.g. 28).
     let subscription_plans = await client.query(
-      `select *from subscription_plans where price=0`,
+      `select *from subscription_plans where is_active=true and is_trial=true order by price asc limit 1`,
     );
+    const trialPlan = subscription_plans.rows[0];
     let result_subscribed_details = await client.query(
-      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on, expiry_days) values ($1,$2,now(),
-    now() + interval '30 days', ((now() + interval '30 days')::date - CURRENT_DATE)) returning *`,
-      [userId, subscription_plans.rows[0].id],
+      `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on, expiry_days)
+       values ($1,$2, now(), now() + ($3 || ' days')::interval,
+               ((now() + ($3 || ' days')::interval)::date - CURRENT_DATE)) returning *`,
+      [userId, trialPlan.id, String(trialPlan.validity_days)],
     );
     await client.query(`COMMIT`);
     //alert here to user & as well as for admin
     //alert messages here
 
     //1. send welcome sms
-    const subscriptin_expiry_date = result_subscribed_details.rows[0].expires_on
+    /*const subscriptin_expiry_date = result_subscribed_details.rows[0].expires_on
       .toISOString()
       .split("T")[0];
     await sendWelcomeSMS(
@@ -128,10 +133,10 @@ const subscribeUser = async (
       vehicle_number,
       mobile_number,
       subscriptin_expiry_date,
-    );
+    );*/
 
     //send RC expiry sms
-    const rc_expiry_date = new Date(result_rc.rows[0].rc_expiry_date);
+    /*const rc_expiry_date = new Date(result_rc.rows[0].rc_expiry_date);
     dateOnly = new Date(
       rc_expiry_date.getFullYear(),
       rc_expiry_date.getMonth(),
@@ -142,6 +147,24 @@ const subscribeUser = async (
       mobile_number,
       vehicle_number,
       result_rc.rows[0].rc_expiry_date,
+    );*/
+    await sendWelcomeWhatsApp(
+      pool,
+      result.rows[0].user_name,
+      vehicle_number,
+      mobile_number,
+      result_subscribed_details.rows[0].expires_on.toISOString().split("T")[0],
+    );
+    await sendVDHReportToWhatsapp(
+      pool,
+      result.rows[0].user_name,
+      vehicle_number,
+      result_rc.rows[0].rc_expiry_date,
+      result_rc.rows[0].vehicle_insurance_upto,
+      result_rc.rows[0].pucc_upto,
+      result_fastag ? result_fastag.rows[0].balance : "N/A",
+      `N/A for trial subscription.`,
+      mobile_number,
     );
     return {
       statuscode: 200,

@@ -6,6 +6,8 @@ const getRC = require("../../temp/getRC");
 const getRCInsertQuery = require("../../utils/getRCInsertQuery");
 const getFastagInsertQuery = require("../../utils/getFastagInsertQuery");
 const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
+const sendVDHReportToWhatsapp = require("../../comms/sendVDHReportToWhatsapp");
+const sendWelcomeWhatsApp = require("../../comms/sendWelcomeWhatsApp");
 const pool = connectDB();
 const subscribeUser_local = async (
   user_name,
@@ -100,6 +102,51 @@ const subscribeUser_local = async (
     );
     await client.query(`COMMIT`);
     //alert messages here
+    //alert here to user & as well as for admin
+    //alert messages here
+
+    //1. send welcome sms
+    /*const subscriptin_expiry_date = result_subscribed_details.rows[0].expires_on
+      .toISOString()
+      .split("T")[0];
+    await sendWelcomeSMS(
+      pool,
+      vehicle_number,
+      mobile_number,
+      subscriptin_expiry_date,
+    );*/
+
+    //send RC expiry sms
+    /*const rc_expiry_date = new Date(result_rc.rows[0].rc_expiry_date);
+    dateOnly = new Date(
+      rc_expiry_date.getFullYear(),
+      rc_expiry_date.getMonth(),
+      rc_expiry_date.getDate(),
+    );
+    await sendRCStatusSMS(
+      pool,
+      mobile_number,
+      vehicle_number,
+      result_rc.rows[0].rc_expiry_date,
+    );*/
+    await sendWelcomeWhatsApp(
+      pool,
+      result.rows[0].user_name,
+      vehicle_number,
+      mobile_number,
+      result_subscribed_details.rows[0].expires_on.toISOString().split("T")[0],
+    );
+    await sendVDHReportToWhatsapp(
+      pool,
+      result.rows[0].user_name,
+      vehicle_number,
+      result_rc.rows[0].rc_expiry_date,
+      result_rc.rows[0].vehicle_insurance_upto,
+      result_rc.rows[0].pucc_upto,
+      result_fastag ? result_fastag.rows[0].balance : "N/A",
+      `N/A for trial subscription.`,
+      mobile_number,
+    );
 
     return {
       statuscode: 200,

@@ -11,7 +11,6 @@ const cryptoMiddleware = require("./middlewares/cryptoMiddleware");
 const apiLogger = require("./middlewares/apiLogger");
 const backupApiLogs = require("./repos/jobs/backupApiLogs");
 const recalcRcExpiryDays = require("./repos/jobs/recalcRcExpiryDays");
-const runEndOfSubscriptionChallanCheck = require("./repos/jobs/runEndOfSubscriptionChallanCheck");
 //const sweepStaleReservations = require("./repos/jobs/sweepStaleReservations");
 const PORT = process.env.PORT;
 const app = express();
@@ -87,15 +86,6 @@ setInterval(() => {
   recalcRcExpiryDays().catch(() => {});
 }, RC_EXPIRY_RECALC_TICK_MS);
 recalcRcExpiryDays().catch(() => {});
-
-/* 🚨 End-of-trial challan check (challan check #2): once a day, re-pull challans
-   for subscriptions expiring today. Idempotent per (user, vehicle) via a
-   message_logs marker, so the boot run + 24h tick never double-process. */
-const END_TRIAL_CHALLAN_TICK_MS = 24 * 60 * 60 * 1000;
-setInterval(() => {
-  runEndOfSubscriptionChallanCheck().catch(() => {});
-}, END_TRIAL_CHALLAN_TICK_MS);
-runEndOfSubscriptionChallanCheck().catch(() => {});
 
 // const RESERVATION_SWEEP_INTERVAL_MS =
 //   Number(process.env.RESERVATION_SWEEP_INTERVAL_MIN || 5) * 60 * 1000;

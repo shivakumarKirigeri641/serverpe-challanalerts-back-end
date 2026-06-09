@@ -32,8 +32,7 @@ const checkIfVehicleExists = require("../repos/checks/checkIfVehicleExists");
 const checkIfMobileNumberAlreadySubscribed = require("../repos/checks/checkIfMobileNumberAlreadySubscribed");
 const ccheckIfMobileNumberForDashboard = require("../repos/checks/checkIfMobileNumberForDashboard");
 const insertOtpForSubscription = require("../repos/insertions/insertOtpForSubscription");
-const createSubscribeOrder = require("../repos/insertions/createSubscribeOrder");
-const verifySubscribePayment = require("../repos/insertions/verifySubscribePayment");
+const subscribeUser = require("../repos/insertions/subscribeUser");
 const getTerms = require("../repos/gets/getTerms");
 const getPrivacyPolicy = require("../repos/gets/getPrivacyPolicy");
 const getConsentPolicy = require("../repos/gets/getConsentPolicy");
@@ -43,6 +42,7 @@ const getExchangeVehicleNumberPolicy = require("../repos/gets/getExchangeVehicle
 const validateForVerifyOtpDashboard = require("../validators/validateForVerifyOtpDashboard");
 const checkIfMobileNumberForDashboard = require("../repos/checks/checkIfMobileNumberForDashboard");
 const { generateOTP } = require("../utils/generateOTP");
+const subscribeUser_local = require("../repos/insertions/subscribeUser_local");
 
 const publicRotuer = express.Router();
 publicRotuer.get("/query-types", async (req, res) => {
@@ -438,8 +438,8 @@ publicRotuer.post("/dashboard/send-otp", strictLimiter, async (req, res) => {
         message: result.message,
       });
     }
-    //let otp = generateOTP();
-    let otp = "1234";
+    let otp = generateOTP();
+    //let otp = "1234";
     result = await insertOtpForSubscription(req?.body?.mobile_number, otp);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
@@ -531,8 +531,8 @@ publicRotuer.post("/subscribe/send-otp", strictLimiter, async (req, res) => {
         message: result.message,
       });
     }
-    //let otp = generateOTP();
-    let otp = "1234";
+    let otp = generateOTP();
+    //let otp = "1234";
     result = await insertOtpForSubscription(req.body.mobile_number, otp);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
@@ -562,72 +562,19 @@ publicRotuer.post("/subscribe/verify-otp", strictLimiter, async (req, res) => {
         data: mobileResult.data,
       });
     }
-    // Subscription is now PAID: verifying the OTP only proves the number is
-    // owned. Activation happens later in /subscribe/verify-payment, after the
-    // ₹49 trial payment succeeds. No user/vehicle is created here.
+    // Verify the OTP, then activate the free trial (create user + vehicle).
     result = await verifyOtpForLogin(
       mobileResult.data.mobile_number,
       mobileResult.data.otp,
     );
-    return res.status(result.statuscode).json({
-      statuscode: result.statuscode,
-      powered_by: "ServerPe App Solutions",
-      successstatus: result.successstatus,
-      message: result.successstatus
-        ? "OTP verified. Proceed to payment."
-        : result.message,
-      data: result.data,
-    });
-  } catch (err) {
-    return res.status(500).json({
-      statuscode: 500,
-      powered_by: "ServerPe App Solutions",
-      successstatus: false,
-      message: `Internal server error. Error:${err.message}`,
-    });
-  }
-});
-
-/* ----------------------- subscribe / trial payment ----------------------- */
-
-// Create a Razorpay order for the paid trial (₹49). The trial plan is resolved
-// server-side (lowest-priced active plan); we re-check the mobile/vehicle aren't
-// already taken between OTP and pay.
-publicRotuer.post("/subscribe/create-order", strictLimiter, async (req, res) => {
-  try {
-    let result = validateForMobileNumberForSubscription(req);
-    if (false === result.successstatus) {
-      return res.status(result.statuscode).json({
-        statuscode: result.statuscode,
-        powered_by: "ServerPe App Solutions",
-        successstatus: result.successstatus,
-        message: result.message,
-        data: result.data,
-      });
+    if (true === result.successstatus) {
+      result = await subscribeUser(
+        mobileResult.data.user_name,
+        mobileResult.data.mobile_number,
+        mobileResult.data.vehicle_number,
+        mobileResult.data.fk_states_unions,
+      );
     }
-    const cleanedMobile = result.data.mobile_number;
-    const cleanedVehicle = result.data.vehicle_number;
-
-    result = await checkIfMobileNumberAlreadySubscribed(cleanedMobile);
-    if (false === result.successstatus) {
-      return res.status(result.statuscode).json({
-        statuscode: result.statuscode,
-        powered_by: "ServerPe App Solutions",
-        successstatus: result.successstatus,
-        message: result.message,
-      });
-    }
-    result = await checkIfVehicleExists(cleanedVehicle);
-    if (false === result.successstatus) {
-      return res.status(result.statuscode).json({
-        statuscode: result.statuscode,
-        powered_by: "ServerPe App Solutions",
-        successstatus: result.successstatus,
-        message: result.message,
-      });
-    }
-
-    result = await createSubscribeOrder(cleanedMobile, cleanedVehicle);
     return res.status(result.statuscode).json({
       statuscode: result.statuscode,
       powered_by: "ServerPe App Solutions",
@@ -644,61 +591,6 @@ publicRotuer.post("/subscribe/create-order", strictLimiter, async (req, res) => 
     });
   }
 });
-
-// Verify the Razorpay payment, then create the user + vehicle and activate the
-// trial in one atomic transaction.
-publicRotuer.post(
-  "/subscribe/verify-payment",
-  strictLimiter,
-  async (req, res) => {
-    try {
-      const validation = validateForMobileNumberForSubscription(req);
-      if (false === validation.successstatus) {
-        return res.status(validation.statuscode).json({
-          statuscode: validation.statuscode,
-          powered_by: "ServerPe App Solutions",
-          successstatus: validation.successstatus,
-          message: validation.message,
-          data: validation.data,
-        });
-      }
-      const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
-        req.body || {};
-      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-        return res.status(400).json({
-          statuscode: 400,
-          powered_by: "ServerPe App Solutions",
-          successstatus: false,
-          message:
-            "razorpay_order_id/payment_id/signature are required",
-        });
-      }
-      const result = await verifySubscribePayment({
-        user_name: validation.data.user_name,
-        mobile_number: validation.data.mobile_number,
-        vehicle_number: validation.data.vehicle_number,
-        fk_states_unions: validation.data.fk_states_unions,
-        razorpay_order_id,
-        razorpay_payment_id,
-        razorpay_signature,
-      });
-      return res.status(result.statuscode).json({
-        statuscode: result.statuscode,
-        powered_by: "ServerPe App Solutions",
-        successstatus: result.successstatus,
-        message: result.message,
-        data: result.data,
-      });
-    } catch (err) {
-      return res.status(500).json({
-        statuscode: 500,
-        powered_by: "ServerPe App Solutions",
-        successstatus: false,
-        message: `Internal server error. Error:${err.message}`,
-      });
-    }
-  },
-);
 
 /* -------------------------- renewal / payment ---------------------------- */
 

@@ -11,11 +11,11 @@ const insertOtpForSubscription = async (mobile_number, otp) => {
       [mobile_number, otp],
     );
     //send sms
-    /*const result_sms_response_details = await sendOtpSMS(
+    const result_sms_response_details = await sendOtpSMS(
       pool,
       mobile_number,
       otp,
-    );*/
+    );
     return {
       statuscode: 201,
       powered_by: "ServerPe App Solutions",

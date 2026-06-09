@@ -2,6 +2,8 @@ const crypto = require("crypto");
 const { connectDB } = require("../../database/connectDB");
 const { getRazorpay } = require("../../utils/razorpayClient");
 const generateInvoicePdf = require("../../temp/generateInvoicePdf");
+const sendVDHReportToWhatsapp = require("../../comms/sendVDHReportToWhatsapp");
+const { sendWhatsApp } = require("../../comms/sendWhatsApp");
 const insertNewVehicle = require("./insertNewVehicle");
 const { fetchVehicleExternalDetails } = require("./insertNewVehicle");
 const getNextInvoiceId = require("../../utils/getNextInvoiceId");
@@ -132,19 +134,58 @@ const verifyRenewPayment = async (p) => {
 
     // 5) Ensure each vehicle exists under this user (using details prefetched
     //    above, so no network I/O happens inside the transaction).
+    const getVehicleWithDetails = async (rcRow) => {
+      const fastagRes = await client.query(
+        `select * from fastag_details where fk_rc_details=$1 order by created_at desc limit 1`,
+        [rcRow.id],
+      );
+
+      const challanOverviewRes = await client.query(
+        `select * from challan_details where fk_rc_details=$1 order by created_at`,
+        [rcRow.id],
+      );
+
+      const challan_details = [];
+      for (const challan of challanOverviewRes.rows) {
+        const violationRes = await client.query(
+          `select * from violation_details where fk_challan_details=$1 order by created_at`,
+          [challan.id],
+        );
+
+        challan_details.push({
+          challan_overview: challan,
+          violation_details: violationRes.rows,
+        });
+      }
+
+      return {
+        ...rcRow,
+        fastag_details: fastagRes.rows[0] ?? null,
+        challan_details,
+      };
+    };
+
     const vehicleRows = [];
     for (const vno of vehicle_numbers) {
       const existing = await client.query(
         `select * from rc_details where reg_no=$1`,
         [vno],
       );
+
       if (existing.rows.length > 0) {
-        vehicleRows.push(existing.rows[0]);
+        vehicleRows.push(await getVehicleWithDetails(existing.rows[0]));
       } else {
-        vehicleRows.push(
-          await insertNewVehicle(client, user.id, vno, prefetch[vno]),
+        const insertedVehicle = await insertNewVehicle(
+          client,
+          user.id,
+          vno,
+          prefetch[vno],
         );
+
+        vehicleRows.push(await getVehicleWithDetails(insertedVehicle));
       }
+
+      //send alert
     }
 
     // 5a) Make sure every covered vehicle is active (a covered plate could have
@@ -284,7 +325,69 @@ const verifyRenewPayment = async (p) => {
       [user.id, subscription.id, paymentRowId, invoiceId, invoicePath],
     );
     await client.query(`COMMIT`);
+
+    const subscriptionStart = subscription.active_on
+      ? new Date(subscription.active_on)
+      : new Date();
+    const next28DaysDate = new Date(subscriptionStart);
+    next28DaysDate.setDate(next28DaysDate.getDate() + 28);
+    const nextVdhReportDate = next28DaysDate.toISOString().split("T")[0];
+
     //alert here to user & as well as for admin abot renewal
+    for (let i = 0; i < vehicleRows.length; i++) {
+      //send VDH report
+      await sendVDHReportToWhatsapp(
+        pool,
+        user.user_name,
+        vehicleRows[i].reg_no,
+        vehicleRows[i].rc_expiry_date,
+        vehicleRows[i].vehicle_insurance_upto,
+        vehicleRows[i].pucc_upto,
+        vehicleRows[i].fastag_details?.balance ?? "N/A",
+        nextVdhReportDate,
+        mobile_number,
+      );
+
+      const challanItems = Array.isArray(vehicleRows[i].challan_details)
+        ? vehicleRows[i].challan_details
+        : [];
+
+      if (challanItems.length > 0) {
+        for (const item of challanItems) {
+          const challan = item?.challan_overview || {};
+          const reasons = (item?.violation_details || [])
+            .map((violation) => violation?.offence)
+            .filter(Boolean)
+            .join(", ");
+
+          const challan_number = challan.challan_no ?? "N/A";
+          const penalty = challan.penalty ?? "N/A";
+          const location = challan.challan_location ?? "N/A";
+          const challan_status = challan.is_active ? "Active" : "Inactive";
+          const reason = reasons || "N/A";
+
+          await sendWhatsApp({
+            mobile_number,
+            template: "amv_challan_v1",
+            params: [
+              user.user_name,
+              vehicleRows[i].reg_no,
+              challan_number,
+              penalty,
+              location,
+              challan_status,
+              reason,
+            ],
+          });
+        }
+      } else {
+        await sendWhatsApp({
+          mobile_number,
+          template: "amv_no_challan_v1",
+          params: [user.user_name, vehicleRows[i].reg_no],
+        });
+      }
+    }
     return {
       statuscode: 200,
       successstatus: true,
@@ -300,6 +403,8 @@ const verifyRenewPayment = async (p) => {
           reg_no: r.reg_no,
           vehicle_manufacturer_name: r.vehicle_manufacturer_name,
           model: r.model,
+          fastag_details: r.fastag_details,
+          challan_details: r.challan_details,
         })),
         subscription,
         payment: {
