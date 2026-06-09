@@ -90,7 +90,7 @@ const getRCInsertQuery = (id, data) => {
   const valuesrc = [
     id,
     data.reg_no,
-    data.vehicle_class || null,
+    data.class || null,
     data.chassis || null,
     data.engine || null,
     data.vehicle_manufacturer_name || null,

@@ -13,7 +13,11 @@ const toWhatsAppNumber = (mobile_number) =>
  * same order) so the SMS can be built from them. Wire the appropriate fast2sms
  * template per message type here (or pass a message-specific `onSmsFallback`).
  */
-const smsFallbackPlaceholder = async ({ mobile_number, template, params = [] }) => {
+const smsFallbackPlaceholder = async ({
+  mobile_number,
+  template,
+  params = [],
+}) => {
   // TODO: implement the SMS fallback — route to the right fast2sms template and
   // feed it `params` (same order as the WhatsApp body params).
   console.warn(
@@ -57,7 +61,11 @@ const sendWhatsApp = async ({
           components: [
             {
               type: "body",
-              parameters: params.map((text) => ({ type: "text", text: String(text) })),
+              // WhatsApp rejects blank body params — coalesce empties to "N/A".
+              parameters: params.map((text) => {
+                const v = text == null ? "" : String(text).trim();
+                return { type: "text", text: v === "" ? "N/A" : v };
+              }),
             },
           ],
         },
@@ -76,7 +84,9 @@ const sendWhatsApp = async ({
     console.error(`WhatsApp send failed (template "${template}"):`, error);
     try {
       const fallback =
-        typeof onSmsFallback === "function" ? onSmsFallback : smsFallbackPlaceholder;
+        typeof onSmsFallback === "function"
+          ? onSmsFallback
+          : smsFallbackPlaceholder;
       await fallback({ mobile_number, template, params, error });
     } catch (smsErr) {
       console.error("SMS fallback also failed:", smsErr?.message || smsErr);

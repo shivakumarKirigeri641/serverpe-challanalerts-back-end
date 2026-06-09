@@ -349,37 +349,72 @@ const verifyRenewPayment = async (p) => {
         mobile_number,
       );
 
-      const challanItems = Array.isArray(vehicleRows[i].challan_details)
-        ? vehicleRows[i].challan_details
-        : [];
+      const rcRow = await client.query(
+        `select id from rc_details where reg_no=$1 and fk_users=$2 limit 1`,
+        [vehicleRows[i].reg_no, user.id],
+      );
+
+      const challanItems = [];
+      if (rcRow.rows.length > 0) {
+        const challanRes = await client.query(
+          `select * from challan_details where fk_rc_details=$1 order by created_at`,
+          [rcRow.rows[0].id],
+        );
+
+        for (const challan of challanRes.rows) {
+          const violationRes = await client.query(
+            `select * from violation_details where fk_challan_details=$1 order by created_at`,
+            [challan.id],
+          );
+
+          challanItems.push({
+            challan_overview: challan,
+            violation_details: violationRes.rows,
+          });
+        }
+      }
 
       if (challanItems.length > 0) {
+        let i = 0;
         for (const item of challanItems) {
           const challan = item?.challan_overview || {};
-          const reasons = (item?.violation_details || [])
-            .map((violation) => violation?.offence)
-            .filter(Boolean)
-            .join(", ");
+          const violations = item?.violation_details || [];
+          const status = challan.challan_status ? "Active" : "Inactive";
 
-          const challan_number = challan.challan_no ?? "N/A";
-          const penalty = challan.penalty ?? "N/A";
-          const location = challan.challan_location ?? "N/A";
-          const challan_status = challan.is_active ? "Active" : "Inactive";
-          const reason = reasons || "N/A";
-
-          await sendWhatsApp({
-            mobile_number,
-            template: "amv_challan_v1",
-            params: [
-              user.user_name,
-              vehicleRows[i].reg_no,
-              challan_number,
-              penalty,
-              location,
-              challan_status,
-              reason,
-            ],
-          });
+          if (violations.length > 0) {
+            // One WhatsApp per violation — its own offence/penalty, not joined.
+            for (const violation of violations) {
+              await sendWhatsApp({
+                mobile_number,
+                template: "amv_challan_v1",
+                params: [
+                  user.user_name,
+                  vehicleRows[i].reg_no,
+                  challan.challan_no,
+                  violation.penalty,
+                  challan.challan_location,
+                  status,
+                  violation.offence,
+                ],
+              });
+            }
+            i++;
+          } else {
+            // Challan with no violation rows — use the challan-level fields.
+            await sendWhatsApp({
+              mobile_number,
+              template: "amv_challan_v1",
+              params: [
+                user.user_name,
+                vehicleRows[i].reg_no,
+                challan.challan_no,
+                challan.penalty,
+                challan.challan_location,
+                status,
+                challan.offence,
+              ],
+            });
+          }
         }
       } else {
         await sendWhatsApp({

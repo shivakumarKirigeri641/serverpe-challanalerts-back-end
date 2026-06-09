@@ -3,6 +3,13 @@ const getRCInsertQuery = require("../../utils/getRCInsertQuery");
 const getFastagInsertQuery = require("../../utils/getFastagInsertQuery");
 const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
 
+const shouldSkipFastagLookup = (vehicleClass) => {
+  const text = String(vehicleClass || "").toLowerCase();
+  return /(scooter|motorcycle|two\s*wheeler|2\s*wheeler|2\s*-?wheeler|2w|2\s*wheel(?:er|ers)?|auto[-\s]*rickshaw|autorickshaw|auto rickshaw)/.test(
+    text,
+  );
+};
+
 /**
  * Fetch a vehicle's RC / challan / fastag details from the external IDS APIs.
  *
@@ -15,7 +22,7 @@ const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
  * @returns {Promise<{rc:object, challan:object, fastag:object}>} raw API responses
  */
 async function fetchVehicleExternalDetails(vehicle_number) {
-  const [rc, challan, fastag] = await Promise.all([
+  const [rc, challan] = await Promise.all([
     axios.post(process.env.IDS_EXTERNAL_API_RC, {
       api_id: process.env.APIID,
       api_key: process.env.IDS_API_KEY,
@@ -28,13 +35,24 @@ async function fetchVehicleExternalDetails(vehicle_number) {
       token_id: process.env.TOKEN_ID,
       reg_no: vehicle_number,
     }),
-    axios.post(process.env.IDS_EXTERNAL_API_FASTAG, {
-      api_id: process.env.APIID,
-      api_key: process.env.IDS_API_KEY,
-      token_id: process.env.TOKEN_ID,
-      vehicle_num: vehicle_number,
-    }),
   ]);
+
+  const vehicleClass =
+    rc?.data?.data?.class ||
+    rc?.data?.data?.vehicle_class ||
+    rc?.data?.data?.data?.class ||
+    rc?.data?.data?.data?.vehicle_class ||
+    "";
+
+  const fastag = shouldSkipFastagLookup(vehicleClass)
+    ? null
+    : await axios.post(process.env.IDS_EXTERNAL_API_FASTAG, {
+        api_id: process.env.APIID,
+        api_key: process.env.IDS_API_KEY,
+        token_id: process.env.TOKEN_ID,
+        vehicle_num: vehicle_number,
+      });
+
   return { rc, challan, fastag };
 }
 

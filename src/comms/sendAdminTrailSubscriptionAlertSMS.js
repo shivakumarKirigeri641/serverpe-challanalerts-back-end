@@ -1,7 +1,6 @@
 const axios = require("axios");
 require("dotenv").config();
 const sendAdminTrailSubscriptionAlertSMS = async (
-  pool,
   user_name,
   vehicle_number,
 ) => {
