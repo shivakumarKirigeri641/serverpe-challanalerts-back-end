@@ -1,6 +1,8 @@
 const cron = require("node-cron");
 const recalcRcExpiryDays = require("../repos/jobs/recalcRcExpiryDays");
 const incrementChallanDays = require("../repos/jobs/incrementChallanDays");
+const incrementFeedbackDays = require("../repos/jobs/incrementFeedbackDays");
+const dailyAlerts = require("../repos/jobs/dailyAlerts");
 
 /**
  * Daily 09:00 IST cron (node-cron). Runs once every day at exactly 9 AM
@@ -19,10 +21,13 @@ const dailyNineAmTask = async () => {
   try {
     // Refresh cached remaining-days (rc/insurance/pucc/permit + subscription).
     await recalcRcExpiryDays();
-    // Advance the rc_details.challan_days counter (cycles 0 → 15 → 0).
+    // Advance the daily rc_details counters BEFORE alerting so the alert job
+    // sees today's values: challan_days (mod 16) and feedback_days (mod 28).
     await incrementChallanDays();
+    await incrementFeedbackDays();
+    // Subscription / document / challan / feedback WhatsApp alerts.
     await doAlertJob();
-    // TODO: add other daily 09:00 IST jobs here (expiry/challan alerts, etc.).
+    // TODO: add other daily 09:00 IST jobs here.
   } catch (err) {
     console.error("Daily 09:00 IST task failed:", err.message);
   }
@@ -37,6 +42,9 @@ const callsEvery24Hours = () => {
 };
 const doAlertJob = async () => {
   try {
-  } catch (err) {}
+    await dailyAlerts();
+  } catch (err) {
+    console.error("doAlertJob failed:", err.message);
+  }
 };
 module.exports = callsEvery24Hours;
