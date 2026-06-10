@@ -1,5 +1,6 @@
 const cron = require("node-cron");
 const recalcRcExpiryDays = require("../repos/jobs/recalcRcExpiryDays");
+const incrementChallanDays = require("../repos/jobs/incrementChallanDays");
 
 /**
  * Daily 09:00 IST cron (node-cron). Runs once every day at exactly 9 AM
@@ -7,8 +8,8 @@ const recalcRcExpiryDays = require("../repos/jobs/recalcRcExpiryDays");
  */
 
 // "minute hour day-of-month month day-of-week" → 09:00 every day.
-//const DAILY_9AM = "0 9 * * *";
-const DAILY_9AM = "* * * * *";
+const DAILY_9AM = "0 9 * * *";
+//const DAILY_9AM = "* * * * *";
 const TIMEZONE = "Asia/Kolkata";
 
 /**
@@ -18,6 +19,8 @@ const dailyNineAmTask = async () => {
   try {
     // Refresh cached remaining-days (rc/insurance/pucc/permit + subscription).
     await recalcRcExpiryDays();
+    // Advance the rc_details.challan_days counter (cycles 0 → 15 → 0).
+    await incrementChallanDays();
     await doAlertJob();
     // TODO: add other daily 09:00 IST jobs here (expiry/challan alerts, etc.).
   } catch (err) {
