@@ -54,7 +54,8 @@ const getRCInsertQuery = (id, data) => {
         raw_response,
         rc_expiry_remaining_datys,
         insurance_expiry_remaining_datys,
-        pucc_expiry_remaining_datys
+        pucc_expiry_remaining_datys,
+        permit_days
     )
     VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -63,10 +64,12 @@ const getRCInsertQuery = (id, data) => {
         $31,$32,$33,$34,$35,$36,$37,$38,$39,$40,
         $41,$42,$43,$44,$45,$46,$47,$48,$49,$50,
         -- Remaining days = expiry date - today (NULL when the date is absent).
-        -- $20 = rc_expiry_date, $23 = vehicle_insurance_upto, $34 = pucc_upto.
+        -- $20 = rc_expiry_date, $23 = vehicle_insurance_upto, $34 = pucc_upto,
+        -- $44 = national_permit_upto.
         CASE WHEN $20::date IS NULL THEN NULL ELSE ($20::date - CURRENT_DATE) END,
         CASE WHEN $23::date IS NULL THEN NULL ELSE ($23::date - CURRENT_DATE) END,
-        CASE WHEN $34::date IS NULL THEN NULL ELSE ($34::date - CURRENT_DATE) END
+        CASE WHEN $34::date IS NULL THEN NULL ELSE ($34::date - CURRENT_DATE) END,
+        CASE WHEN $44::date IS NULL THEN NULL ELSE ($44::date - CURRENT_DATE) END
     )
     RETURNING
         id,
@@ -84,7 +87,8 @@ const getRCInsertQuery = (id, data) => {
         pucc_upto,
         rc_expiry_remaining_datys,
         insurance_expiry_remaining_datys,
-        pucc_expiry_remaining_datys;
+        pucc_expiry_remaining_datys,
+        permit_days;
   `;
 
   const valuesrc = [
