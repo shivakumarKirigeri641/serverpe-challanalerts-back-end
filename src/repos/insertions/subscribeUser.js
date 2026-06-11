@@ -10,6 +10,15 @@ const sendRCStatusSMS = require("../../comms/sendRCStatusSMS");
 const sendVDHReportToWhatsapp = require("../../comms/sendVDHReportToWhatsapp");
 const pool = connectDB();
 
+/* 🎁 Launch offer: the first FREE_YEAR_OFFER_LIMIT vehicles EVER subscribed get
+   a free 1-year subscription instead of the short trial. "First N" is counted
+   by grants actually made (rc_details.free_year_offer = true), so retiring a
+   vehicle never reopens a used slot. FREE_YEAR_OFFER_LOCK is a global advisory
+   lock key that serializes the allocation so concurrent subscribes from
+   different users can't over-grant past the limit. */
+const FREE_YEAR_OFFER_LIMIT = 100;
+const FREE_YEAR_OFFER_LOCK = 778899;
+
 const subscribeUser = async (
   user_name,
   mobile_number,
@@ -64,62 +73,87 @@ const subscribeUser = async (
     const result_rc = await client.query(myqueryrc, valuesrc);
     const rcId = result_rc.rows[0].id;
 
+    // 🚫 Challan API disabled — no challans are fetched/inserted on subscribe.
+    //    result_challans stays empty so the response shape is unchanged.
     let result_challans = [];
-    for (
-      let i = 0;
-      i < challan_external_details?.data?.data?.echallan_count;
-      i++
-    ) {
-      const item = challan_external_details?.data?.data?.data[i];
-      let { myquerych, valuesch } = getChallanInsertQuery(rcId, item);
-      // challan_no is globally unique; skip an already-stored challan instead of
-      // aborting the whole subscription.
-      const query = myquerych.replace(
-        /\s*returning/i,
-        " ON CONFLICT (challan_no) DO NOTHING returning",
+    // for (
+    //   let i = 0;
+    //   i < challan_external_details?.data?.data?.echallan_count;
+    //   i++
+    // ) {
+    //   const item = challan_external_details?.data?.data?.data[i];
+    //   let { myquerych, valuesch } = getChallanInsertQuery(rcId, item);
+    //   // challan_no is globally unique; skip an already-stored challan instead of
+    //   // aborting the whole subscription.
+    //   const query = myquerych.replace(
+    //     /\s*returning/i,
+    //     " ON CONFLICT (challan_no) DO NOTHING returning",
+    //   );
+    //   let tempchallan = await client.query(query, valuesch);
+    //   if (tempchallan.rows.length === 0) continue; // duplicate challan_no — skipped
+    //   //insert violations
+    //   let violation_details_array = [];
+    //   for (let j = 0; j < (item.violation_details?.length || 0); j++) {
+    //     const violations = await client.query(
+    //       `insert into violation_details (fk_challan_details, offence, penalty) values ($1,$2,$3) returning *`,
+    //       [
+    //         tempchallan.rows[0].id,
+    //         item.violation_details[j].offence,
+    //         item.violation_details[j].penalty,
+    //       ],
+    //     );
+    //     violation_details_array.push(violations.rows[0]);
+    //   }
+    //   result_challans.push({
+    //     challan_data: tempchallan.rows[0],
+    //     violataion_data: violation_details_array,
+    //   });
+    // }
+
+    // 🚫 FASTag API disabled — no fastag is fetched/inserted on subscribe.
+    //    result_fastag stays null so the response shape is unchanged.
+    let result_fastag = null;
+    // if (fastag_external_details?.data?.data?.data?.data) {
+    //   let { myqueryft, valuesft } = getFastagInsertQuery(
+    //     rcId,
+    //     fastag_external_details?.data?.data?.data?.data,
+    //   );
+    //   // assign to the outer variable (the previous `const` here shadowed it, so
+    //   // the fastag row never made it into the response).
+    //   result_fastag = await client.query(myqueryft, valuesft);
+    // }
+    /* 🎁 Decide the launch offer INSIDE the transaction. Serialize the
+       allocation globally so two concurrent first-time subscribers can't both
+       claim the same remaining slot. The lock is held until COMMIT/ROLLBACK. */
+    await client.query(`SELECT pg_advisory_xact_lock($1)`, [
+      FREE_YEAR_OFFER_LOCK,
+    ]);
+    const granted = await client.query(
+      `SELECT COUNT(*)::int AS c FROM rc_details WHERE free_year_offer = true`,
+    );
+    const qualifiesForFreeYear = granted.rows[0].c < FREE_YEAR_OFFER_LIMIT;
+    if (qualifiesForFreeYear) {
+      await client.query(
+        `UPDATE rc_details SET free_year_offer = true WHERE id = $1`,
+        [rcId],
       );
-      let tempchallan = await client.query(query, valuesch);
-      if (tempchallan.rows.length === 0) continue; // duplicate challan_no — skipped
-      //insert violations
-      let violation_details_array = [];
-      for (let j = 0; j < (item.violation_details?.length || 0); j++) {
-        const violations = await client.query(
-          `insert into violation_details (fk_challan_details, offence, penalty) values ($1,$2,$3) returning *`,
-          [
-            tempchallan.rows[0].id,
-            item.violation_details[j].offence,
-            item.violation_details[j].penalty,
-          ],
-        );
-        violation_details_array.push(violations.rows[0]);
-      }
-      result_challans.push({
-        challan_data: tempchallan.rows[0],
-        violataion_data: violation_details_array,
-      });
     }
 
-    let result_fastag = null;
-    if (fastag_external_details?.data?.data?.data?.data) {
-      let { myqueryft, valuesft } = getFastagInsertQuery(
-        rcId,
-        fastag_external_details?.data?.data?.data?.data,
-      );
-      // assign to the outer variable (the previous `const` here shadowed it, so
-      // the fastag row never made it into the response).
-      result_fastag = await client.query(myqueryft, valuesft);
-    }
-    //insert into user_subscribed — the free trial plan (is_trial), activated for
-    //its configured validity_days (e.g. 28).
+    //insert into user_subscribed — the free trial plan (is_trial). Qualifying
+    //vehicles get a 1-year validity (launch offer); everyone else gets the
+    //plan's configured validity_days (e.g. 28).
     let subscription_plans = await client.query(
       `select *from subscription_plans where is_active=true and is_trial=true order by price asc limit 1`,
     );
     const trialPlan = subscription_plans.rows[0];
+    const subscriptionInterval = qualifiesForFreeYear
+      ? "1 year"
+      : `${trialPlan.validity_days} days`;
     let result_subscribed_details = await client.query(
       `insert into user_subscribed (fk_users, fk_subscription_plans, active_on, expires_on, expiry_days)
-       values ($1,$2, now(), now() + ($3 || ' days')::interval,
-               ((now() + ($3 || ' days')::interval)::date - CURRENT_DATE)) returning *`,
-      [userId, trialPlan.id, String(trialPlan.validity_days)],
+       values ($1,$2, now(), now() + ($3)::interval,
+               ((now() + ($3)::interval)::date - CURRENT_DATE)) returning *`,
+      [userId, trialPlan.id, subscriptionInterval],
     );
     await client.query(`COMMIT`);
     //alert here to user & as well as for admin
@@ -178,6 +212,8 @@ const subscribeUser = async (
       message: `Subscription successful`,
       data: {
         user_details: result.rows[0],
+        // Launch offer: true when this vehicle got the free 1-year subscription.
+        free_year_offer: qualifiesForFreeYear,
         rc_details: result_rc.rows[0], //precaution, do not send all deatails, just for test only
         challan_details: result_challans,
         fastag_details: result_fastag ? result_fastag.rows[0] : null,

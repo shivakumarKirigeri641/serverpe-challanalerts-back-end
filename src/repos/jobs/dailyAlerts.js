@@ -21,12 +21,23 @@ const TPL = {
 };
 
 /* Challan-check alerts — PLACEHOLDERS. Replace each template name and tweak
-   each params() builder. ctx exposes user_name, reg_no; `count` is the number
-   of challans returned by the external API. */
+   each params() builder.
+   - `found` is sent ONCE PER newly detected challan, so its params() receives
+     the individual challan object from the external API (fields: challan_no,
+     challan_location, penalty, challan_amount, offence, challan_date,
+     challan_status, rto_name, violator_name, state, court_status, ...).
+   - `none` is sent once when the API returns zero challans for the vehicle. */
 const CHALLAN_ALERT = {
   found: {
     template: "PLACEHOLDER_challan_found", // TODO
-    params: (ctx, count) => [ctx.user_name, ctx.reg_no, String(count)],
+    params: (ctx, challan) => [
+      ctx.user_name,
+      ctx.reg_no, // vehicle_number
+      challan.challan_no,
+      String(challan.penalty ?? challan.challan_amount ?? ""),
+      challan.challan_location,
+      challan.offence, // reason
+    ],
   },
   none: {
     template: "PLACEHOLDER_challan_none", // TODO
@@ -79,7 +90,15 @@ const DOCUMENTS = [
     expiredParams: (ctx, days) => [ctx.user_name, ctx.reg_no, String(days)],
   },
   {
-    key: "PERMIT",
+    key: "STATE_PERMIT",
+    remainingField: "state_permit_remaining_datys",
+    expiringTpl: "PLACEHOLDER_state_permit_expiring",
+    expiredTpl: "PLACEHOLDER_state_permit_expired",
+    expiringParams: (ctx, days) => [ctx.user_name, ctx.reg_no, String(days)],
+    expiredParams: (ctx, days) => [ctx.user_name, ctx.reg_no, String(days)],
+  },
+  {
+    key: "NATIONAL_PERMIT",
     remainingField: "permit_days",
     expiringTpl: "PLACEHOLDER_permit_expiring",
     expiredTpl: "PLACEHOLDER_permit_expired",
@@ -234,7 +253,7 @@ const handleChallanCheck = async (ctx, external) => {
   try {
     const challanBody = external?.challan?.data?.data;
     const count = challanBody?.echallan_count || 0;
-    let inserted = 0;
+    const newChallans = []; // items that were NOT already stored
 
     for (let i = 0; i < count; i++) {
       const item = challanBody.data[i];
@@ -245,8 +264,8 @@ const handleChallanCheck = async (ctx, external) => {
         " ON CONFLICT (challan_no) DO NOTHING returning",
       );
       const stored = await pool.query(query, valuesch);
-      if (stored.rows.length === 0) continue; // duplicate — skipped
-      inserted += 1;
+      if (stored.rows.length === 0) continue; // duplicate — skipped (no alert)
+      newChallans.push(item);
       for (let j = 0; j < (item.violation_details?.length || 0); j++) {
         await pool.query(
           `insert into violation_details (fk_challan_details, offence, penalty) values ($1,$2,$3)`,
@@ -259,15 +278,34 @@ const handleChallanCheck = async (ctx, external) => {
       }
     }
     console.log(
-      `[alerts] challan check ${reg_no}: ${count} from API, ${inserted} new`,
+      `[alerts] challan check ${reg_no}: ${count} from API, ${newChallans.length} new`,
     );
 
-    const alert = count > 0 ? CHALLAN_ALERT.found : CHALLAN_ALERT.none;
-    await sendWhatsApp({
-      mobile_number,
-      template: alert.template,
-      params: alert.params(ctx, count),
-    });
+    if (count === 0) {
+      // No challans at all for this vehicle → single "all clear" message.
+      await sendWhatsApp({
+        mobile_number,
+        template: CHALLAN_ALERT.none.template,
+        params: CHALLAN_ALERT.none.params(ctx),
+      });
+    } else {
+      // One alert per NEWLY detected challan (already-stored ones aren't
+      // re-notified). If challans exist but none are new, nothing is sent.
+      for (const challan of newChallans) {
+        try {
+          await sendWhatsApp({
+            mobile_number,
+            template: CHALLAN_ALERT.found.template,
+            params: CHALLAN_ALERT.found.params(ctx, challan),
+          });
+        } catch (err) {
+          console.error(
+            `[alerts] challan-found alert failed for ${reg_no} (${challan.challan_no}):`,
+            err.message,
+          );
+        }
+      }
+    }
   } catch (err) {
     console.error(`[alerts] challan check failed for ${reg_no}:`, err.message);
   }
@@ -338,7 +376,8 @@ const dailyAlerts = async () => {
         vehicles = await pool.query(
           `SELECT id AS rc_id, reg_no,
                   rc_expiry_remaining_datys, insurance_expiry_remaining_datys,
-                  pucc_expiry_remaining_datys, permit_days, challan_days
+                  pucc_expiry_remaining_datys, permit_days,
+                  state_permit_remaining_datys, challan_days
            FROM rc_details
            WHERE fk_users = $1 AND COALESCE(is_active, true) = true
            ORDER BY created_at`,
@@ -368,6 +407,7 @@ const dailyAlerts = async () => {
           insurance_expiry_remaining_datys: v.insurance_expiry_remaining_datys,
           pucc_expiry_remaining_datys: v.pucc_expiry_remaining_datys,
           permit_days: v.permit_days,
+          state_permit_remaining_datys: v.state_permit_remaining_datys,
         };
 
         // Part 1: subscription alerts (run for every vehicle, always).
@@ -376,17 +416,19 @@ const dailyAlerts = async () => {
         // Parts 2 & 3 only apply while the subscription is still running.
         if (subscriptionExpired) continue;
 
-        // Decide if we need an external round-trip (RC refresh and/or challan).
+        // Decide if we need an external round-trip (RC refresh for documents).
         const docThresholdHit = [
           v.rc_expiry_remaining_datys,
           v.insurance_expiry_remaining_datys,
           v.pucc_expiry_remaining_datys,
           v.permit_days,
+          v.state_permit_remaining_datys,
         ].some((r) => r != null && DOCUMENT_EXPIRING_DAYS.includes(r));
-        const challanDue = v.challan_days === 0;
+        // 🚫 Challan API disabled — challan check is turned off.
+        // const challanDue = v.challan_days === 0;
 
         let external = null;
-        if (docThresholdHit || challanDue) {
+        if (docThresholdHit /* || challanDue */) {
           try {
             external = await fetchVehicleExternalDetails(v.reg_no);
           } catch (err) {
@@ -402,8 +444,8 @@ const dailyAlerts = async () => {
         // a threshold was hit and fresh RC data is available.
         await handleDocumentAlerts(ctx, external);
 
-        // Part 2.2: challan check (needs the external challan payload).
-        if (challanDue && external) await handleChallanCheck(ctx, external);
+        // 🚫 Part 2.2: challan check — DISABLED (challan API unavailable).
+        // if (challanDue && external) await handleChallanCheck(ctx, external);
 
         // Part 4: VDH report — per vehicle, on the ~28-day account cadence.
         if (sub.feedback_days === 0) await handleVDHReport(ctx);

@@ -1,6 +1,7 @@
 const cron = require("node-cron");
 const recalcRcExpiryDays = require("../repos/jobs/recalcRcExpiryDays");
-const incrementChallanDays = require("../repos/jobs/incrementChallanDays");
+// 🚫 Challan API disabled — challan_days counter no longer advanced.
+// const incrementChallanDays = require("../repos/jobs/incrementChallanDays");
 const incrementFeedbackDays = require("../repos/jobs/incrementFeedbackDays");
 const dailyAlerts = require("../repos/jobs/dailyAlerts");
 
@@ -21,11 +22,11 @@ const dailyNineAmTask = async () => {
   try {
     // Refresh cached remaining-days (rc/insurance/pucc/permit + subscription).
     await recalcRcExpiryDays();
-    // Advance the daily rc_details counters BEFORE alerting so the alert job
-    // sees today's values: challan_days (mod 16) and feedback_days (mod 28).
-    await incrementChallanDays();
+    // Advance the daily feedback_days counter (mod 28) BEFORE alerting.
+    // 🚫 Challan API disabled — challan_days counter tick removed.
+    // await incrementChallanDays();
     await incrementFeedbackDays();
-    // Subscription / document / challan / feedback WhatsApp alerts.
+    // Subscription / document / feedback / VDH WhatsApp alerts.
     await doAlertJob();
     // TODO: add other daily 09:00 IST jobs here.
   } catch (err) {

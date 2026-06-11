@@ -33,7 +33,10 @@ const recalcRcExpiryDays = async () => {
                ELSE (pucc_upto - CURRENT_DATE) END,
         permit_days =
           CASE WHEN national_permit_upto IS NULL THEN NULL
-               ELSE (national_permit_upto - CURRENT_DATE) END
+               ELSE (national_permit_upto - CURRENT_DATE) END,
+        state_permit_remaining_datys =
+          CASE WHEN permit_valid_upto IS NULL THEN NULL
+               ELSE (permit_valid_upto - CURRENT_DATE) END
       WHERE
         rc_expiry_remaining_datys IS DISTINCT FROM
           (CASE WHEN rc_expiry_date IS NULL THEN NULL
@@ -46,7 +49,10 @@ const recalcRcExpiryDays = async () => {
                 ELSE (pucc_upto - CURRENT_DATE) END)
         OR permit_days IS DISTINCT FROM
           (CASE WHEN national_permit_upto IS NULL THEN NULL
-                ELSE (national_permit_upto - CURRENT_DATE) END);
+                ELSE (national_permit_upto - CURRENT_DATE) END)
+        OR state_permit_remaining_datys IS DISTINCT FROM
+          (CASE WHEN permit_valid_upto IS NULL THEN NULL
+                ELSE (permit_valid_upto - CURRENT_DATE) END);
     `);
     console.log(
       `rc_details expiry-days recalculated: ${days.rowCount} row(s) updated`,

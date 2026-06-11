@@ -22,36 +22,42 @@ const shouldSkipFastagLookup = (vehicleClass) => {
  * @returns {Promise<{rc:object, challan:object, fastag:object}>} raw API responses
  */
 async function fetchVehicleExternalDetails(vehicle_number) {
-  const [rc, challan] = await Promise.all([
+  // 🚫 Challan API is DISABLED for now — only the RC lookup is performed.
+  //    challan stays null so all downstream challan handling is a no-op.
+  const [rc] = await Promise.all([
     axios.post(process.env.IDS_EXTERNAL_API_RC, {
       api_id: process.env.APIID,
       api_key: process.env.IDS_API_KEY,
       token_id: process.env.TOKEN_ID,
       reg_no: vehicle_number,
     }),
-    axios.post(process.env.IDS_EXTERNAL_API_CHALLAN, {
-      api_id: process.env.APIID,
-      api_key: process.env.IDS_API_KEY,
-      token_id: process.env.TOKEN_ID,
-      reg_no: vehicle_number,
-    }),
+    // axios.post(process.env.IDS_EXTERNAL_API_CHALLAN, {
+    //   api_id: process.env.APIID,
+    //   api_key: process.env.IDS_API_KEY,
+    //   token_id: process.env.TOKEN_ID,
+    //   reg_no: vehicle_number,
+    // }),
   ]);
+  const challan = null; // challan API disabled
 
-  const vehicleClass =
-    rc?.data?.data?.class ||
-    rc?.data?.data?.vehicle_class ||
-    rc?.data?.data?.data?.class ||
-    rc?.data?.data?.data?.vehicle_class ||
-    "";
-
-  const fastag = shouldSkipFastagLookup(vehicleClass)
-    ? null
-    : await axios.post(process.env.IDS_EXTERNAL_API_FASTAG, {
-        api_id: process.env.APIID,
-        api_key: process.env.IDS_API_KEY,
-        token_id: process.env.TOKEN_ID,
-        vehicle_num: vehicle_number,
-      });
+  // 🚫 FASTag API is DISABLED for now — fastag stays null so all downstream
+  //    fastag handling is a no-op.
+  // const vehicleClass =
+  //   rc?.data?.data?.class ||
+  //   rc?.data?.data?.vehicle_class ||
+  //   rc?.data?.data?.data?.class ||
+  //   rc?.data?.data?.data?.vehicle_class ||
+  //   "";
+  //
+  // const fastag = shouldSkipFastagLookup(vehicleClass)
+  //   ? null
+  //   : await axios.post(process.env.IDS_EXTERNAL_API_FASTAG, {
+  //       api_id: process.env.APIID,
+  //       api_key: process.env.IDS_API_KEY,
+  //       token_id: process.env.TOKEN_ID,
+  //       vehicle_num: vehicle_number,
+  //     });
+  const fastag = null; // FASTag API disabled
 
   return { rc, challan, fastag };
 }
@@ -79,35 +85,37 @@ async function insertNewVehicle(client, fk_users, vehicle_number, prefetched) {
   const result_rc = await client.query(myqueryrc, valuesrc);
   const rcId = result_rc.rows[0].id;
 
-  const count = challan?.data?.data?.echallan_count || 0;
-  for (let i = 0; i < count; i++) {
-    const item = challan.data.data.data[i];
-    const { myquerych, valuesch } = getChallanInsertQuery(rcId, item);
-    // challan_no is globally unique; an already-stored challan must not abort
-    // the whole flow. Skip duplicates (and their violations) gracefully.
-    const query = myquerych.replace(
-      /\s*returning/i,
-      " ON CONFLICT (challan_no) DO NOTHING returning",
-    );
-    const tempchallan = await client.query(query, valuesch);
-    if (tempchallan.rows.length === 0) continue; // duplicate challan_no — skipped
-    for (let j = 0; j < (item.violation_details?.length || 0); j++) {
-      await client.query(
-        `insert into violation_details (fk_challan_details, offence, penalty) values ($1,$2,$3)`,
-        [
-          tempchallan.rows[0].id,
-          item.violation_details[j].offence,
-          item.violation_details[j].penalty,
-        ],
-      );
-    }
-  }
+  // 🚫 Challan API disabled — challan insertion skipped (challan is null).
+  // const count = challan?.data?.data?.echallan_count || 0;
+  // for (let i = 0; i < count; i++) {
+  //   const item = challan.data.data.data[i];
+  //   const { myquerych, valuesch } = getChallanInsertQuery(rcId, item);
+  //   // challan_no is globally unique; an already-stored challan must not abort
+  //   // the whole flow. Skip duplicates (and their violations) gracefully.
+  //   const query = myquerych.replace(
+  //     /\s*returning/i,
+  //     " ON CONFLICT (challan_no) DO NOTHING returning",
+  //   );
+  //   const tempchallan = await client.query(query, valuesch);
+  //   if (tempchallan.rows.length === 0) continue; // duplicate challan_no — skipped
+  //   for (let j = 0; j < (item.violation_details?.length || 0); j++) {
+  //     await client.query(
+  //       `insert into violation_details (fk_challan_details, offence, penalty) values ($1,$2,$3)`,
+  //       [
+  //         tempchallan.rows[0].id,
+  //         item.violation_details[j].offence,
+  //         item.violation_details[j].penalty,
+  //       ],
+  //     );
+  //   }
+  // }
 
-  const fastagData = fastag?.data?.data?.data?.data;
-  if (fastagData) {
-    const { myqueryft, valuesft } = getFastagInsertQuery(rcId, fastagData);
-    await client.query(myqueryft, valuesft);
-  }
+  // 🚫 FASTag API disabled — fastag insertion skipped (fastag is null).
+  // const fastagData = fastag?.data?.data?.data?.data;
+  // if (fastagData) {
+  //   const { myqueryft, valuesft } = getFastagInsertQuery(rcId, fastagData);
+  //   await client.query(myqueryft, valuesft);
+  // }
   return result_rc.rows[0];
 }
 

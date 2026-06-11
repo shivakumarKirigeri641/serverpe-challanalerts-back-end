@@ -3,6 +3,25 @@ const { connectDB } = require("../../database/connectDB");
 const pool = connectDB();
 const axios = require("axios");
 require("dotenv").config();
+
+/**
+ * Fetch the active list of Indian states & union territories.
+ *
+ * WHAT  : Returns active states_unions rows (id, codes, name, is_union_territory),
+ *         alphabetised by name.
+ * WHY   : Subscription needs fk_states_unions to (a) generate a correct GST invoice
+ *         and (b) derive the RTO/state context for a vehicle. A managed table keeps
+ *         names/codes consistent across the app.
+ * WHERE : publicRouter "GET /states-unions" — populates the state dropdown on the
+ *         Subscribe form (the id chosen becomes users.fk_states_unions).
+ * HOW   : Read-only; ServerPe envelope. Never throws (DB errors → 500).
+ *         NOTE: the large commented-out block below was a one-off WhatsApp/challan
+ *         send used to manually test templates against a real number — kept for
+ *         reference, intentionally dead.
+ * BENEFIT: Single source of truth for states/UTs; drives invoices and RTO mapping.
+ *
+ * @returns {Promise<{statuscode:number, successstatus:boolean, message:string, data?:any[]}>}
+ */
 const getStatesAndUnions = async () => {
   try {
     const result = await pool.query(
@@ -156,6 +175,22 @@ const getStatesAndUnions = async () => {
     };
   }
 };
+/**
+ * Assemble a full vehicle view (rc + latest fastag + challans with violations).
+ *
+ * WHAT  : Given an rc_details row, attaches its most recent fastag row and every
+ *         challan (each with its violation_details) into one nested object.
+ * WHY   : Several flows want the "complete vehicle picture" in one shape for a
+ *         response or a WhatsApp summary, rather than the caller re-joining tables.
+ * WHERE : Helper for the commented-out test block above; the live equivalent lives
+ *         in getUserMasterDetails / verifyRenewPayment. Kept here as a reference helper.
+ * HOW   : Sequential reads on the shared pool; returns a plain object (NOT an envelope).
+ *         Assumes the caller handles errors (it can throw on a DB failure).
+ * BENEFIT: One call → fully hydrated vehicle, ready to render or message.
+ *
+ * @param {object} rcRow  a row from rc_details
+ * @returns {Promise<object>} rcRow spread + { fastag_details, challan_details[] }
+ */
 const getVehicleWithDetails = async (rcRow) => {
   const fastagRes = await pool.query(
     `select * from fastag_details where fk_rc_details=$1 order by created_at desc limit 1`,

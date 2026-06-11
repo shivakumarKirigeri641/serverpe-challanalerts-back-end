@@ -65,7 +65,7 @@ const getRCUpdateQuery = (id, data) => {
         raw_response = $48,
         -- Re-derive remaining days = expiry date - today (NULL when absent).
         -- $18 = rc_expiry_date, $21 = vehicle_insurance_upto,
-        -- $32 = pucc_upto, $42 = national_permit_upto.
+        -- $32 = pucc_upto, $42 = national_permit_upto, $38 = permit_valid_upto.
         rc_expiry_remaining_datys =
           CASE WHEN $18::date IS NULL THEN NULL ELSE ($18::date - CURRENT_DATE) END,
         insurance_expiry_remaining_datys =
@@ -73,12 +73,15 @@ const getRCUpdateQuery = (id, data) => {
         pucc_expiry_remaining_datys =
           CASE WHEN $32::date IS NULL THEN NULL ELSE ($32::date - CURRENT_DATE) END,
         permit_days =
-          CASE WHEN $42::date IS NULL THEN NULL ELSE ($42::date - CURRENT_DATE) END
+          CASE WHEN $42::date IS NULL THEN NULL ELSE ($42::date - CURRENT_DATE) END,
+        state_permit_remaining_datys =
+          CASE WHEN $38::date IS NULL THEN NULL ELSE ($38::date - CURRENT_DATE) END
     WHERE id = $49
     RETURNING
         id, reg_no, rc_expiry_date, vehicle_insurance_upto, pucc_upto,
-        national_permit_upto, rc_expiry_remaining_datys,
-        insurance_expiry_remaining_datys, pucc_expiry_remaining_datys, permit_days;
+        national_permit_upto, permit_valid_upto, rc_expiry_remaining_datys,
+        insurance_expiry_remaining_datys, pucc_expiry_remaining_datys,
+        permit_days, state_permit_remaining_datys;
   `;
 
   const valuesrcu = [

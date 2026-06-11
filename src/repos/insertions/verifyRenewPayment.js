@@ -344,85 +344,87 @@ const verifyRenewPayment = async (p) => {
         vehicleRows[i].rc_expiry_date,
         vehicleRows[i].vehicle_insurance_upto,
         vehicleRows[i].pucc_upto,
-        vehicleRows[i].fastag_details?.balance ?? "N/A",
+        // 🚫 FASTag disabled — always report balance as N/A.
+        "N/A",
         nextVdhReportDate,
         mobile_number,
       );
 
-      const rcRow = await client.query(
-        `select id from rc_details where reg_no=$1 and fk_users=$2 limit 1`,
-        [vehicleRows[i].reg_no, user.id],
-      );
-
-      const challanItems = [];
-      if (rcRow.rows.length > 0) {
-        const challanRes = await client.query(
-          `select * from challan_details where fk_rc_details=$1 order by created_at`,
-          [rcRow.rows[0].id],
-        );
-
-        for (const challan of challanRes.rows) {
-          const violationRes = await client.query(
-            `select * from violation_details where fk_challan_details=$1 order by created_at`,
-            [challan.id],
-          );
-
-          challanItems.push({
-            challan_overview: challan,
-            violation_details: violationRes.rows,
-          });
-        }
-      }
-
-      if (challanItems.length > 0) {
-        let i = 0;
-        for (const item of challanItems) {
-          const challan = item?.challan_overview || {};
-          const violations = item?.violation_details || [];
-          const status = challan.challan_status ? "Active" : "Inactive";
-
-          if (violations.length > 0) {
-            // One WhatsApp per violation — its own offence/penalty, not joined.
-            for (const violation of violations) {
-              await sendWhatsApp({
-                mobile_number,
-                template: "amv_challan_v1",
-                params: [
-                  user.user_name,
-                  vehicleRows[i].reg_no,
-                  challan.challan_no,
-                  violation.penalty,
-                  challan.challan_location,
-                  status,
-                  violation.offence,
-                ],
-              });
-            }
-            i++;
-          } else {
-            // Challan with no violation rows — use the challan-level fields.
-            await sendWhatsApp({
-              mobile_number,
-              template: "amv_challan_v1",
-              params: [
-                user.user_name,
-                vehicleRows[i].reg_no,
-                challan.challan_no,
-                challan.penalty,
-                challan.challan_location,
-                status,
-                challan.offence,
-              ],
-            });
-          }
-        }
-      } else {
-        await sendWhatsApp({
-          mobile_number,
-          template: "amv_no_challan_v1",
-          params: [user.user_name, vehicleRows[i].reg_no],
-        });
-      }
+      // 🚫 Challan API disabled — challan WhatsApp alerts on renewal are off.
+      // const rcRow = await client.query(
+      //   `select id from rc_details where reg_no=$1 and fk_users=$2 limit 1`,
+      //   [vehicleRows[i].reg_no, user.id],
+      // );
+      //
+      // const challanItems = [];
+      // if (rcRow.rows.length > 0) {
+      //   const challanRes = await client.query(
+      //     `select * from challan_details where fk_rc_details=$1 order by created_at`,
+      //     [rcRow.rows[0].id],
+      //   );
+      //
+      //   for (const challan of challanRes.rows) {
+      //     const violationRes = await client.query(
+      //       `select * from violation_details where fk_challan_details=$1 order by created_at`,
+      //       [challan.id],
+      //     );
+      //
+      //     challanItems.push({
+      //       challan_overview: challan,
+      //       violation_details: violationRes.rows,
+      //     });
+      //   }
+      // }
+      //
+      // if (challanItems.length > 0) {
+      //   let i = 0;
+      //   for (const item of challanItems) {
+      //     const challan = item?.challan_overview || {};
+      //     const violations = item?.violation_details || [];
+      //     const status = challan.challan_status ? "Active" : "Inactive";
+      //
+      //     if (violations.length > 0) {
+      //       // One WhatsApp per violation — its own offence/penalty, not joined.
+      //       for (const violation of violations) {
+      //         await sendWhatsApp({
+      //           mobile_number,
+      //           template: "amv_challan_v1",
+      //           params: [
+      //             user.user_name,
+      //             vehicleRows[i].reg_no,
+      //             challan.challan_no,
+      //             violation.penalty,
+      //             challan.challan_location,
+      //             status,
+      //             violation.offence,
+      //           ],
+      //         });
+      //       }
+      //       i++;
+      //     } else {
+      //       // Challan with no violation rows — use the challan-level fields.
+      //       await sendWhatsApp({
+      //         mobile_number,
+      //         template: "amv_challan_v1",
+      //         params: [
+      //           user.user_name,
+      //           vehicleRows[i].reg_no,
+      //           challan.challan_no,
+      //           challan.penalty,
+      //           challan.challan_location,
+      //           status,
+      //           challan.offence,
+      //         ],
+      //       });
+      //     }
+      //   }
+      // } else {
+      //   await sendWhatsApp({
+      //     mobile_number,
+      //     template: "amv_no_challan_v1",
+      //     params: [user.user_name, vehicleRows[i].reg_no],
+      //   });
+      // }
     }
     //alert admin
     await sendAdminPremiumSubscriptionAlertSMS(
