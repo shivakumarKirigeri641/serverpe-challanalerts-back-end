@@ -32,7 +32,7 @@ const connectDB = () => {
       keepAlive: true,
     });
 
-    testConnection(pool, "serverpe_vehicledocalerts DB");
+    testConnection(pool, "serverpe_alertmyvahan DB");
   }
   return pool;
 };
