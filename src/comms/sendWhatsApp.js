@@ -1,4 +1,6 @@
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 require("dotenv").config();
 
 /** Normalize a cleaned 10-digit Indian mobile to WhatsApp's "91XXXXXXXXXX". */
@@ -95,4 +97,111 @@ const sendWhatsApp = async ({
   }
 };
 
-module.exports = { sendWhatsApp, toWhatsAppNumber };
+/**
+ * Upload a local file to the WhatsApp Media API and return its media id.
+ * Uses Node's global FormData/Blob (Node 18+) so no extra dependency is needed.
+ * The media id is valid for sending for a limited time (re-upload per send).
+ *
+ * @param {string} filePath   absolute or process-relative path to the file
+ * @param {string} [mimeType] e.g. "application/pdf"
+ * @returns {Promise<string>} the WhatsApp media id
+ */
+const uploadWhatsAppMedia = async (filePath, mimeType = "application/pdf") => {
+  const abs = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(process.cwd(), filePath);
+  const buffer = fs.readFileSync(abs);
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mimeType);
+  form.append("file", new Blob([buffer], { type: mimeType }), path.basename(abs));
+
+  const resp = await axios.post(
+    `https://graph.facebook.com/v25.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/media`,
+    form,
+    { headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` } },
+  );
+  return resp.data.id;
+};
+
+/**
+ * Send an approved WhatsApp template that has a DOCUMENT header (PDF attachment)
+ * plus ordered body params. The PDF is uploaded to WhatsApp first, then attached
+ * by media id. Used for the VDH report ("amv_vdh_with_feedaackrequest_v1").
+ *
+ * Never throws — returns a small result object so a send failure can't break the
+ * calling job. (No SMS fallback here: an SMS can't carry the PDF.)
+ *
+ * @param {object} p
+ * @param {string}   p.mobile_number       cleaned 10-digit mobile
+ * @param {string}   p.template            approved template name (has a document header)
+ * @param {string[]} [p.params=[]]         ordered body params
+ * @param {string}   p.documentPath        path to the PDF on disk
+ * @param {string}   [p.documentFilename]  filename shown in WhatsApp
+ * @param {string}   [p.languageCode="en"]
+ * @returns {Promise<{ ok:boolean, channel:"whatsapp", data?:any, error?:any }>}
+ */
+const sendWhatsAppDocumentTemplate = async ({
+  mobile_number,
+  template,
+  params = [],
+  documentPath,
+  documentFilename = "report.pdf",
+  languageCode = "en",
+}) => {
+  try {
+    const mediaId = await uploadWhatsAppMedia(documentPath, "application/pdf");
+    const response = await axios.post(
+      `https://graph.facebook.com/v25.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: toWhatsAppNumber(mobile_number),
+        type: "template",
+        template: {
+          name: template,
+          language: { code: languageCode },
+          components: [
+            {
+              type: "header",
+              parameters: [
+                {
+                  type: "document",
+                  document: { id: mediaId, filename: documentFilename },
+                },
+              ],
+            },
+            {
+              type: "body",
+              parameters: params.map((text) => {
+                const v = text == null ? "" : String(text).trim();
+                return { type: "text", text: v === "" ? "N/A" : v };
+              }),
+            },
+          ],
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    console.log("WhatsApp document template sent:", response.data);
+    return { ok: true, channel: "whatsapp", data: response.data };
+  } catch (err) {
+    const error = err?.response?.data || err.message;
+    console.error(
+      `WhatsApp document send failed (template "${template}"):`,
+      error,
+    );
+    return { ok: false, channel: "whatsapp", error };
+  }
+};
+
+module.exports = {
+  sendWhatsApp,
+  toWhatsAppNumber,
+  sendWhatsAppDocumentTemplate,
+  uploadWhatsAppMedia,
+};

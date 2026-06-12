@@ -1,5 +1,6 @@
 const updateRemainingDays = require("./updateRemainingDays");
 const handleAlertingSubscribers = require("./handleAlertingSubscribers");
+const handleVdhReport = require("../jobs/handleVdhReport");
 const handleAlertingSubscribersFromDocuments = require("./handleAlertingSubscribersFromDocuments");
 
 /**
@@ -19,7 +20,9 @@ const handleAlertingSubscribersFromDocuments = require("./handleAlertingSubscrib
  */
 const simulateFastDays = async (pool) => {
   try {
-    console.warn("⏩ [simulateFastDays] TEST MODE — simulating one day this tick");
+    console.warn(
+      "⏩ [simulateFastDays] TEST MODE — simulating one day this tick",
+    );
 
     // 1) Pretend a new day started: rewind the decrement guards to yesterday...
     await pool.query(
@@ -36,9 +39,10 @@ const simulateFastDays = async (pool) => {
     );
 
     // 2) Run the REAL jobs (unchanged), in the production order.
-    await updateRemainingDays(pool);
-    await handleAlertingSubscribers(pool);
-    await handleAlertingSubscribersFromDocuments(pool);
+    //await updateRemainingDays(pool);
+    //await handleAlertingSubscribers(pool);
+    //await handleAlertingSubscribersFromDocuments(pool);
+    await handleVdhReport(pool); // ← VDH report (every 30 days)
   } catch (err) {
     console.error("simulateFastDays failed:", err.message);
   }
