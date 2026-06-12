@@ -2,6 +2,7 @@ const axios = require("axios");
 const getRCInsertQuery = require("../../utils/getRCInsertQuery");
 const getFastagInsertQuery = require("../../utils/getFastagInsertQuery");
 const getChallanInsertQuery = require("../../utils/getChallanInsertQuery");
+const logExternalApiCall = require("./logExternalApiCall");
 
 const shouldSkipFastagLookup = (vehicleClass) => {
   const text = String(vehicleClass || "").toLowerCase();
@@ -24,20 +25,39 @@ const shouldSkipFastagLookup = (vehicleClass) => {
 async function fetchVehicleExternalDetails(vehicle_number) {
   // 🚫 Challan API is DISABLED for now — only the RC lookup is performed.
   //    challan stays null so all downstream challan handling is a no-op.
-  const [rc] = await Promise.all([
-    axios.post(process.env.IDS_EXTERNAL_API_RC, {
+  // 📊 Every external call is recorded in external_api_calls (fire-and-forget).
+  const t0 = Date.now();
+  let rc;
+  try {
+    rc = await axios.post(process.env.IDS_EXTERNAL_API_RC, {
       api_id: process.env.APIID,
       api_key: process.env.IDS_API_KEY,
       token_id: process.env.TOKEN_ID,
       reg_no: vehicle_number,
-    }),
-    // axios.post(process.env.IDS_EXTERNAL_API_CHALLAN, {
-    //   api_id: process.env.APIID,
-    //   api_key: process.env.IDS_API_KEY,
-    //   token_id: process.env.TOKEN_ID,
-    //   reg_no: vehicle_number,
-    // }),
-  ]);
+    });
+    logExternalApiCall({
+      api_name: "RC",
+      endpoint: process.env.IDS_EXTERNAL_API_RC,
+      reg_no: vehicle_number,
+      params: { reg_no: vehicle_number },
+      success: true,
+      status_code: rc?.status ?? null,
+      response_time_ms: Date.now() - t0,
+    });
+  } catch (err) {
+    logExternalApiCall({
+      api_name: "RC",
+      endpoint: process.env.IDS_EXTERNAL_API_RC,
+      reg_no: vehicle_number,
+      params: { reg_no: vehicle_number },
+      success: false,
+      status_code: err?.response?.status ?? null,
+      response_time_ms: Date.now() - t0,
+    });
+    throw err; // preserve original behaviour — caller handles the error
+  }
+  // 🚫 When challan is re-enabled, log it too:
+  //    logExternalApiCall({ api_name: "CHALLAN", endpoint: ..._CHALLAN, reg_no, params: { reg_no }, ... })
   const challan = null; // challan API disabled
 
   // 🚫 FASTag API is DISABLED for now — fastag stays null so all downstream

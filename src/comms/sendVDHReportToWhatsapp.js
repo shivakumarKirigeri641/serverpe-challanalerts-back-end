@@ -1,5 +1,6 @@
 const { sendWhatsApp } = require("./sendWhatsApp");
 const sendWelcomeSMS = require("./sendWelcomeSMS");
+const recordSend = require("./recordSend");
 const getRemainingDays = require("../utils/getRemainingDays");
 
 /**
@@ -55,7 +56,7 @@ const sendVDHReportToWhatsapp = async (
         : `Expired ${pucc_remaining_days * -1} days ago`;
   }
   //fastag
-  sendWhatsApp({
+  const res = await sendWhatsApp({
     mobile_number,
     template: "amv_vdh_v1",
     params: [
@@ -70,6 +71,8 @@ const sendVDHReportToWhatsapp = async (
     /*onSmsFallback: () =>
       sendWelcomeSMS(pool, vehicle_number, mobile_number, expiry_date),*/
   });
+  recordSend({ mobile_number, channel: "WHATSAPP", sent: !!res?.ok, kind: "VDH" });
+  return res;
 };
 
 module.exports = sendVDHReportToWhatsapp;

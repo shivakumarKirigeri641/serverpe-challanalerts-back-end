@@ -3,6 +3,7 @@ const {
   sendWhatsAppDocumentTemplate,
 } = require("../../comms/sendWhatsApp");
 const generateVdhPdf = require("../../utils/generateVdhPdf");
+const { costFor } = require("../../utils/messageCost");
 
 /**
  * Vehicle Documents Health (VDH) report — generated + WhatsApp'd every 30 days.
@@ -184,12 +185,19 @@ const handleVdhReport = async (pool) => {
           [v.rc_id],
         );
 
-        // Log (channel WHATSAPP; semantic key in comments).
+        // Log (channel WHATSAPP; semantic key in comments) + cost.
         await pool.query(
           `insert into message_logs
-             (fk_users, fk_rc_details, message_type, message_content, is_sent, is_failed, comments)
-           values ($1,$2,'WHATSAPP',$3,$4,$5,'VDH_REPORT')`,
-          [v.user_id, v.rc_id, JSON.stringify({ template: VDH_TEMPLATE, pdf: relPath }), !!res.ok, !res.ok],
+             (fk_users, fk_rc_details, message_type, message_content, is_sent, is_failed, comments, cost)
+           values ($1,$2,'WHATSAPP',$3,$4,$5,'VDH_REPORT',$6)`,
+          [
+            v.user_id,
+            v.rc_id,
+            JSON.stringify({ template: VDH_TEMPLATE, pdf: relPath }),
+            !!res.ok,
+            !res.ok,
+            costFor("WHATSAPP", !!res.ok),
+          ],
         );
 
         sent += 1;

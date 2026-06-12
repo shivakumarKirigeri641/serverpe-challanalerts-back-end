@@ -1,4 +1,5 @@
 const { sendWhatsApp } = require("../../comms/sendWhatsApp");
+const { costFor } = require("../../utils/messageCost");
 
 /**
  * Daily SUBSCRIPTION-expiry alerting.
@@ -70,9 +71,9 @@ const alreadyAlertedToday = async (pool, userId, alertKey) => {
 const logMessage = async (pool, userId, alertKey, content, ok) => {
   await pool.query(
     `insert into message_logs
-       (fk_users, fk_rc_details, message_type, message_content, is_sent, is_failed, comments)
-     values ($1, NULL, $2, $3, $4, $5, $6)`,
-    [userId, CHANNEL, content, ok, !ok, alertKey],
+       (fk_users, fk_rc_details, message_type, message_content, is_sent, is_failed, comments, cost)
+     values ($1, NULL, $2, $3, $4, $5, $6, $7)`,
+    [userId, CHANNEL, content, ok, !ok, alertKey, costFor(CHANNEL, ok)],
   );
 };
 

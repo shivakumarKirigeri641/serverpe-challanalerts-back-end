@@ -3,6 +3,7 @@ const {
   fetchVehicleExternalDetails,
 } = require("../insertions/insertNewVehicle");
 const getRCUpdateQuery = require("../../utils/getRCUpdateQuery");
+const { costFor } = require("../../utils/messageCost");
 
 /**
  * Daily DOCUMENT-expiry alerting (per vehicle, per document).
@@ -108,9 +109,9 @@ const alreadyAlertedToday = async (pool, rcId, alertKey) => {
 const logMessage = async (pool, userId, rcId, alertKey, content, ok) => {
   await pool.query(
     `insert into message_logs
-       (fk_users, fk_rc_details, message_type, message_content, is_sent, is_failed, comments)
-     values ($1,$2,$3,$4,$5,$6,$7)`,
-    [userId, rcId, CHANNEL, content, ok, !ok, alertKey],
+       (fk_users, fk_rc_details, message_type, message_content, is_sent, is_failed, comments, cost)
+     values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [userId, rcId, CHANNEL, content, ok, !ok, alertKey, costFor(CHANNEL, ok)],
   );
 };
 

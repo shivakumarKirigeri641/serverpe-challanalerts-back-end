@@ -1,5 +1,6 @@
 const { sendWhatsApp } = require("./sendWhatsApp");
 const sendWelcomeSMS = require("./sendWelcomeSMS");
+const recordSend = require("./recordSend");
 
 /**
  * Welcome message on subscription. Uses the common WhatsApp sender with the
@@ -19,13 +20,16 @@ const sendWelcomeWhatsApp = async (
   vehicle_number,
   mobile_number,
   expiry_date,
-) =>
-  sendWhatsApp({
+) => {
+  const res = await sendWhatsApp({
     mobile_number,
     template: "amv_welcome_v1",
     params: [user_name, vehicle_number, expiry_date],
     onSmsFallback: () =>
       sendWelcomeSMS(pool, vehicle_number, mobile_number, expiry_date),
   });
+  recordSend({ mobile_number, channel: "WHATSAPP", sent: !!res?.ok, kind: "WELCOME" });
+  return res;
+};
 
 module.exports = sendWelcomeWhatsApp;
