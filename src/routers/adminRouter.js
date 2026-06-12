@@ -9,6 +9,7 @@ const adminAuth = require("../repos/admin/adminAuth");
 const getDashboardStats = require("../repos/admin/getDashboardStats");
 const getRevenueDetails = require("../repos/admin/getRevenueDetails");
 const getAnalytics = require("../repos/admin/getAnalytics");
+const getRecentActivity = require("../repos/admin/getRecentActivity");
 const authMiddleware = require("../middlewares/authMiddleware");
 const { strictLimiter } = require("../utils/rateLimiters");
 const { respond, serverError } = require("../utils/respond");
@@ -93,6 +94,18 @@ adminRouter.get("/dashboard/revenue", async (req, res) => {
 adminRouter.get("/analytics", async (req, res) => {
   try {
     return respond(res, await getAnalytics());
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+
+/* Live activity feed — poll with ?after=<last id> for near-real-time updates. */
+adminRouter.get("/activity/recent", async (req, res) => {
+  try {
+    return respond(
+      res,
+      await getRecentActivity({ after: req.query.after, limit: req.query.limit }),
+    );
   } catch (err) {
     return respond(res, serverError(err));
   }

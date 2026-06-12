@@ -31,6 +31,13 @@ const getAnalytics = async () => {
       topStates,
       loginsByDay,
       challansByStatus,
+      externalToday,
+      externalByDay,
+      externalByName,
+      msgByChannel,
+      msgByKind,
+      msgCostByDay,
+      subsByType,
     ] = await Promise.all([
       getDashboardStats(),
       getRevenueDetails(),
@@ -91,6 +98,47 @@ const getAnalytics = async () => {
                COALESCE(SUM(challan_amount), 0)::numeric AS amount
           FROM challan_details
          GROUP BY 1 ORDER BY count DESC;`),
+      // ── Cost & operations: external API calls (RC billed ~₹2.9) ──────────
+      q(`
+        SELECT COUNT(*)::int AS calls,
+               ROUND(SUM(CASE WHEN api_name='RC' THEN 2.9 ELSE 0 END)::numeric, 2) AS cost
+          FROM external_api_calls WHERE call_date = CURRENT_DATE;`),
+      q(`
+        SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+               COUNT(*)::int AS calls,
+               ROUND(SUM(CASE WHEN api_name='RC' THEN 2.9 ELSE 0 END)::numeric, 2) AS cost
+          FROM external_api_calls
+         WHERE created_at >= now() - interval '14 days'
+         GROUP BY 1 ORDER BY 1;`),
+      q(`
+        SELECT api_name,
+               COUNT(*)::int AS calls,
+               ROUND(SUM(CASE WHEN api_name='RC' THEN 2.9 ELSE 0 END)::numeric, 2) AS cost
+          FROM external_api_calls
+         GROUP BY 1 ORDER BY calls DESC;`),
+      // ── Notification spend (WhatsApp/SMS) from message_logs.cost ─────────
+      q(`
+        SELECT message_type AS channel,
+               COUNT(*) FILTER (WHERE is_sent)::int AS sent,
+               COUNT(*) FILTER (WHERE is_failed)::int AS failed,
+               ROUND(COALESCE(SUM(cost), 0)::numeric, 2) AS cost
+          FROM message_logs GROUP BY 1 ORDER BY cost DESC;`),
+      q(`
+        SELECT COALESCE(comments, '(other)') AS kind,
+               COUNT(*)::int AS count,
+               ROUND(COALESCE(SUM(cost), 0)::numeric, 2) AS cost
+          FROM message_logs GROUP BY 1 ORDER BY count DESC LIMIT 12;`),
+      q(`
+        SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+               ROUND(COALESCE(SUM(cost), 0)::numeric, 2) AS cost
+          FROM message_logs WHERE created_at >= now() - interval '14 days'
+         GROUP BY 1 ORDER BY 1;`),
+      q(`
+        SELECT CASE WHEN sp.is_trial THEN 'Trial' ELSE 'Paid' END AS type,
+               COUNT(*)::int AS count
+          FROM user_subscribed us
+          JOIN subscription_plans sp ON sp.id = us.fk_subscription_plans
+         GROUP BY 1 ORDER BY count DESC;`),
     ]);
 
     return {
@@ -121,6 +169,42 @@ const getAnalytics = async () => {
           count: r.count,
           amount: Number(r.amount || 0),
         })),
+        // Cost & operations (admin-only spend tracking).
+        external_api: {
+          today: {
+            calls: externalToday[0]?.calls || 0,
+            cost: Number(externalToday[0]?.cost || 0),
+          },
+          by_day: externalByDay.map((r) => ({
+            day: r.day,
+            calls: r.calls,
+            cost: Number(r.cost || 0),
+          })),
+          by_name: externalByName.map((r) => ({
+            api_name: r.api_name,
+            calls: r.calls,
+            cost: Number(r.cost || 0),
+          })),
+        },
+        notification: {
+          total_cost: msgByChannel.reduce((s, r) => s + Number(r.cost || 0), 0),
+          by_channel: msgByChannel.map((r) => ({
+            channel: r.channel,
+            sent: r.sent,
+            failed: r.failed,
+            cost: Number(r.cost || 0),
+          })),
+          by_kind: msgByKind.map((r) => ({
+            kind: r.kind,
+            count: r.count,
+            cost: Number(r.cost || 0),
+          })),
+          cost_by_day: msgCostByDay.map((r) => ({
+            day: r.day,
+            cost: Number(r.cost || 0),
+          })),
+        },
+        subscriptions_by_type: subsByType,
       },
     };
   } catch (err) {
