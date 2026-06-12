@@ -1,4 +1,8 @@
 const { sendWhatsApp } = require("../../comms/sendWhatsApp");
+const {
+  fetchVehicleExternalDetails,
+} = require("../insertions/insertNewVehicle");
+const getRCUpdateQuery = require("../../utils/getRCUpdateQuery");
 
 /**
  * Daily DOCUMENT-expiry alerting (per vehicle, per document).
@@ -110,6 +114,37 @@ const logMessage = async (pool, userId, rcId, alertKey, content, ok) => {
   );
 };
 
+/**
+ * Re-fetch the vehicle's RC from the external API (RC ONLY — challan/FASTag are
+ * disabled) and refresh the rc_details row, so the cached dates + remaining-days
+ * re-anchor to the source of truth right after an alert. Skips the write if the
+ * external call returns no data (never overwrites the row with NULLs). Wrapped so
+ * a refresh failure can't break the alerting loop.
+ */
+const refreshVehicleRc = async (pool, rcId, regNo) => {
+  try {
+    // 💰 The external RC API is billed (~₹2.9/call). Set SKIP_RC_REFRESH=true to
+    // disable the refresh entirely (e.g. during fast-day simulation / testing).
+    if (String(process.env.SKIP_RC_REFRESH).toLowerCase() === "true") {
+      console.log(`[doc-alerts] rc refresh SKIPPED (SKIP_RC_REFRESH) for ${regNo}`);
+      return;
+    }
+    const ext = await fetchVehicleExternalDetails(regNo);
+    const rcData = ext?.rc?.data?.data;
+    if (!rcData || Object.keys(rcData).length === 0) {
+      console.warn(
+        `[doc-alerts] rc refresh skipped for ${regNo} (no external data)`,
+      );
+      return;
+    }
+    const { myqueryrcu, valuesrcu } = getRCUpdateQuery(rcId, rcData);
+    await pool.query(myqueryrcu, valuesrcu);
+    console.log(`[doc-alerts] rc_details refreshed for ${regNo} (id ${rcId})`);
+  } catch (err) {
+    console.error(`[doc-alerts] rc refresh failed for ${regNo}:`, err.message);
+  }
+};
+
 const handleAlertingSubscribersFromDocuments = async (pool) => {
   try {
     // 1) Active threshold days (admin-managed; shared with the subscription job).
@@ -148,6 +183,7 @@ const handleAlertingSubscribersFromDocuments = async (pool) => {
     let expiring = 0;
     let expired = 0;
     for (const v of vehicles.rows) {
+      let sentAny = false; // did we actually send any alert for this vehicle?
       for (const doc of DOCUMENTS) {
         const remaining = v[doc.remainingField];
         const docDate = v[doc.dateField];
@@ -187,6 +223,7 @@ const handleAlertingSubscribersFromDocuments = async (pool) => {
 
           if (isExpired) expired += 1;
           else expiring += 1;
+          sentAny = true;
           console.log(
             `[doc-alerts] ${doc.key} ${phase} → ${v.mobile_number} ${v.reg_no} (${remaining}d)`,
           );
@@ -198,6 +235,10 @@ const handleAlertingSubscribersFromDocuments = async (pool) => {
           );
         }
       }
+
+      // After sending document alert(s), re-fetch the RC and update rc_details
+      // (once per vehicle) so the cached values re-anchor to the latest data.
+      if (sentAny) await refreshVehicleRc(pool, v.rc_id, v.reg_no);
     }
 
     console.log(
