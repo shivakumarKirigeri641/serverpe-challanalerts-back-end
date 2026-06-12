@@ -10,7 +10,7 @@ const { globalLimiter } = require("./utils/rateLimiters");
 const cryptoMiddleware = require("./middlewares/cryptoMiddleware");
 const apiLogger = require("./middlewares/apiLogger");
 const backupApiLogs = require("./repos/jobs/backupApiLogs");
-const callsEvery24Hours = require("./crons/callsEvery24Hours");
+const scheduleDailyJobs = require("./crons/scheduleDailyJobs");
 const recalcRcExpiryDays = require("./repos/jobs/recalcRcExpiryDays");
 //const sweepStaleReservations = require("./repos/jobs/sweepStaleReservations");
 const PORT = process.env.PORT;
@@ -79,10 +79,9 @@ setInterval(() => {
 }, API_LOG_BACKUP_TICK_MS);
 backupApiLogs().catch(() => {});
 
-/* 🗓️ Daily 09:00 IST cron: refreshes rc_details "remaining days"
-   (rc/insurance/pucc/permit) + subscription expiry_days, and any other daily
-   jobs added inside callsEvery24Hours. */
-callsEvery24Hours();
+/* 🗓️ Daily 09:00 IST scheduler — registers the daily job (placeholder; write
+   your logic inside crons/callsEvery24Hours.js → dailyTask). */
+scheduleDailyJobs();
 
 // const RESERVATION_SWEEP_INTERVAL_MS =
 //   Number(process.env.RESERVATION_SWEEP_INTERVAL_MIN || 5) * 60 * 1000;

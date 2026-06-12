@@ -156,6 +156,19 @@ const resources = {
       c("is_active", "Active"),
     ],
   },
+  "expiry-days-mapping": {
+    group: "Catalog",
+    label: "Expiry Day Thresholds",
+    table: "expiry_days_mapping",
+    writable: ["days", "is_active"],
+    search: ["days"],
+    order: "days ASC",
+    display: [
+      c("id", "ID"),
+      c("days", "Days (negative = after expiry)"),
+      c("is_active", "Active"),
+    ],
+  },
   "gst-details": {
     group: "Catalog",
     label: "GST Details",
