@@ -10,6 +10,7 @@ const getDashboardStats = require("../repos/admin/getDashboardStats");
 const getRevenueDetails = require("../repos/admin/getRevenueDetails");
 const getAnalytics = require("../repos/admin/getAnalytics");
 const getRecentActivity = require("../repos/admin/getRecentActivity");
+const bulk = require("../repos/admin/bulkOnboard");
 const authMiddleware = require("../middlewares/authMiddleware");
 const { strictLimiter } = require("../utils/rateLimiters");
 const { respond, serverError } = require("../utils/respond");
@@ -106,6 +107,57 @@ adminRouter.get("/activity/recent", async (req, res) => {
       res,
       await getRecentActivity({ after: req.query.after, limit: req.query.limit }),
     );
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+
+/* ── Bulk onboarding: one user (OTP-verified) → many vehicles → invoice ── */
+adminRouter.post("/bulk/send-otp", async (req, res) => {
+  try {
+    return respond(res, await bulk.bulkSendOtp(req.body?.mobile_number));
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+adminRouter.post("/bulk/create-user", async (req, res) => {
+  try {
+    return respond(res, await bulk.bulkCreateUser(req.body || {}));
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+adminRouter.post("/bulk/add-vehicle", async (req, res) => {
+  try {
+    return respond(res, await bulk.bulkAddVehicle(req.body || {}));
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+adminRouter.post("/bulk/remove-vehicle", async (req, res) => {
+  try {
+    return respond(res, await bulk.bulkRemoveVehicle(req.body || {}));
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+adminRouter.get("/bulk/summary", async (req, res) => {
+  try {
+    return respond(res, await bulk.bulkSummary(req.query?.fk_users));
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+adminRouter.post("/bulk/create-order", async (req, res) => {
+  try {
+    return respond(res, await bulk.bulkCreateOrder(req.body || {}));
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+adminRouter.post("/bulk/verify-payment", async (req, res) => {
+  try {
+    return respond(res, await bulk.bulkVerifyPayment(req.body || {}));
   } catch (err) {
     return respond(res, serverError(err));
   }
