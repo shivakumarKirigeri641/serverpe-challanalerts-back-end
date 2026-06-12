@@ -91,7 +91,10 @@ const summaryFor = async (fk_users) => {
 const bulkSendOtp = async (mobile_number) => {
   try {
     const dup = await checkIfMobileNumberAlreadySubscribed(mobile_number);
-    if (!dup.successstatus) return dup; // already a user
+    // Remap the duplicate-user 401 to 409 — a 401 reaching the admin client is
+    // treated as an expired session and bounces the admin to the login screen.
+    if (!dup.successstatus)
+      return fail(dup.statuscode === 401 ? 409 : dup.statuscode, dup.message);
     const otp = generateOTP();
     const r = await insertOtpForSubscription(mobile_number, otp);
     if (!r.successstatus) return fail(500, "Failed to send OTP");
