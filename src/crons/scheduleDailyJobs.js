@@ -3,6 +3,7 @@ const { connectDB } = require("../database/connectDB");
 const updateRemainingDays = require("../repos/jobs/updateRemainingDays");
 const handleAlertingSubscribers = require("../repos/jobs/handleAlertingSubscribers");
 const handleAlertingSubscribersFromDocuments = require("../repos/jobs/handleAlertingSubscribersFromDocuments");
+const simulateFastDays = require("../repos/jobs/simulateFastDays");
 const pool = connectDB();
 /**
  * Daily scheduler — runs `dailyTask` once a day at 09:00 IST (Asia/Kolkata),
@@ -23,7 +24,8 @@ const TIMEZONE = "Asia/Kolkata";
 const dailyTask = async () => {
   try {
     // TODO: implement your daily job here.
-    await updateRemainingDays(pool);
+    await simulateFastDays(pool);
+    //await updateRemainingDays(pool);
     //await handleAlertingSubscribers(pool);
     //await handleAlertingSubscribersFromDocuments(pool);
   } catch (err) {

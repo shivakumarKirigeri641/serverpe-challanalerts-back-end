@@ -35,45 +35,45 @@ const DOCUMENTS = [
     key: "RC",
     remainingField: "rc_expiry_remaining_datys",
     dateField: "rc_expiry_date",
-    expiringTpl: "PLACEHOLDER_rc_expiring",
-    expiredTpl: "PLACEHOLDER_rc_expired",
+    expiringTpl: "amv_rc_expiring_v1",
+    expiredTpl: "amv_rc_expired_v1",
   },
   {
     key: "INSURANCE",
     remainingField: "insurance_expiry_remaining_datys",
     dateField: "vehicle_insurance_upto",
-    expiringTpl: "PLACEHOLDER_insurance_expiring",
-    expiredTpl: "PLACEHOLDER_insurance_expired",
+    expiringTpl: "amv_ins_expiring_v3",
+    expiredTpl: "amv_ins_expired_v3",
   },
   {
     key: "PUCC",
     remainingField: "pucc_expiry_remaining_datys",
     dateField: "pucc_upto",
-    expiringTpl: "PLACEHOLDER_pucc_expiring",
-    expiredTpl: "PLACEHOLDER_pucc_expired",
+    expiringTpl: "amv_pucc_expiring_v3",
+    expiredTpl: "amv_pucc_expired_v3",
   },
   {
     key: "STATE_PERMIT",
     remainingField: "state_permit_remaining_datys",
     dateField: "permit_valid_upto",
-    expiringTpl: "PLACEHOLDER_state_permit_expiring",
-    expiredTpl: "PLACEHOLDER_state_permit_expired",
+    expiringTpl: "amv_statepermit_expiring_v3",
+    expiredTpl: "amv_statepermit_expired_v3",
   },
   {
     key: "NATIONAL_PERMIT",
     remainingField: "permit_days",
     dateField: "national_permit_upto",
-    expiringTpl: "PLACEHOLDER_permit_expiring",
-    expiredTpl: "PLACEHOLDER_permit_expired",
+    expiringTpl: "amv_nationalpermit_expiring_v3",
+    expiredTpl: "amv_nationalpermit_expired_v3",
   },
 ];
 
-/* WhatsApp body params — same order for both phases (fill to match templates). */
-const buildParams = (v, doc, expiry_date, days) => [
+/* WhatsApp body params (3): user_name, vehicle_number, expiry_date.
+   Same order for both expiring & expired templates. */
+const buildParams = (v, doc, expiry_date) => [
   v.user_name,
   v.reg_no,
   expiry_date,
-  String(days),
 ];
 
 /** Format a DB date/timestamp to "YYYY-MM-DD". */
@@ -150,8 +150,15 @@ const handleAlertingSubscribersFromDocuments = async (pool) => {
     for (const v of vehicles.rows) {
       for (const doc of DOCUMENTS) {
         const remaining = v[doc.remainingField];
-        // NULL (absent document) or not on a threshold → skip.
-        if (remaining == null || !thresholds.has(remaining)) continue;
+        const docDate = v[doc.dateField];
+        // Skip when the document is ABSENT (its source date is NULL — e.g.
+        // permit_valid_upto / national_permit_upto / pucc_upto), when its
+        // remaining-days is NULL, or when the value isn't on a threshold.
+        // Guarding on the DATE (not just remaining-days) means a stray/stale
+        // remaining-days with no date can never fire a phantom alert.
+        if (docDate == null || remaining == null || !thresholds.has(remaining)) {
+          continue;
+        }
 
         const isExpired = remaining < 0;
         const phase = isExpired ? "EXPIRED" : "EXPIRING";
@@ -162,8 +169,7 @@ const handleAlertingSubscribersFromDocuments = async (pool) => {
 
           const template = isExpired ? doc.expiredTpl : doc.expiringTpl;
           const expiry_date = toDateStr(v[doc.dateField]);
-          const daysParam = isExpired ? Math.abs(remaining) : remaining;
-          const params = buildParams(v, doc, expiry_date, daysParam);
+          const params = buildParams(v, doc, expiry_date);
 
           const res = await sendWhatsApp({
             mobile_number: v.mobile_number,
@@ -200,7 +206,10 @@ const handleAlertingSubscribersFromDocuments = async (pool) => {
     return { expiring, expired, ok: true };
   } catch (err) {
     // Fire-and-forget: never throw — must not break sibling cron jobs.
-    console.error("handleAlertingSubscribersFromDocuments failed:", err.message);
+    console.error(
+      "handleAlertingSubscribersFromDocuments failed:",
+      err.message,
+    );
     return { expiring: 0, expired: 0, ok: false };
   }
 };
