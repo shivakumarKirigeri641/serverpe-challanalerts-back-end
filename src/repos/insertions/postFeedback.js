@@ -1,4 +1,5 @@
 const { connectDB } = require("../../database/connectDB");
+const sendFeedbackAlertSMS = require("../../comms/sendFeedbackAlertSMS");
 const pool = connectDB();
 
 const postFeedback = async (user_name, rating, message, photopath = null) => {
@@ -11,7 +12,13 @@ const postFeedback = async (user_name, rating, message, photopath = null) => {
       [user_name, rating, message || null, photopath || null],
     );
     await pool.query("COMMIT");
-    //alert here admin abot feedback
+
+    // Alert the admin about the new feedback — fire-and-forget so a failed SMS
+    // (sendFeedbackAlertSMS throws on error) never breaks the user's submission.
+    sendFeedbackAlertSMS(pool, user_name, rating, message || "").catch((e) =>
+      console.error("Feedback admin SMS failed:", e?.message),
+    );
+
     return {
       statuscode: 200,
       successstatus: true,
