@@ -1,4 +1,5 @@
 const { connectDB } = require("../../database/connectDB");
+const notifyLowWallet = require("../../comms/notifyLowWallet");
 const pool = connectDB();
 
 /* Credential-ish keys we must never persist in request_params. */
@@ -65,6 +66,27 @@ const logExternalApiCall = async ({
         response_time_ms,
       ],
     );
+
+    // Deduct the per-call cost from the provider wallet (single-row ledger).
+    // Kept inside the same fail-safe block — a wallet update failure must never
+    // break the real call. The cost amount lives in the table (per_call_cost).
+    // Email the admin when the balance crosses below ₹100.
+    const w = await pool.query(
+      `update external_api_wallet
+          set balance = balance - per_call_cost, updated_at = now()
+        where id = 1
+      returning balance, per_call_cost`,
+    );
+    const row = w.rows[0];
+    if (row) {
+      const newBalance = Number(row.balance);
+      notifyLowWallet({
+        name: "External API wallet",
+        prevBalance: newBalance + Number(row.per_call_cost),
+        newBalance,
+        threshold: 100,
+      });
+    }
   } catch (err) {
     console.error("logExternalApiCall failed:", err.message);
   }

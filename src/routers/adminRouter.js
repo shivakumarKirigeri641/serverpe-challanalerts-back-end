@@ -11,6 +11,7 @@ const getRevenueDetails = require("../repos/admin/getRevenueDetails");
 const getDashboardOverview = require("../repos/admin/getDashboardOverview");
 const getAnalytics = require("../repos/admin/getAnalytics");
 const getRecentActivity = require("../repos/admin/getRecentActivity");
+const wallet = require("../repos/admin/wallet");
 const bulk = require("../repos/admin/bulkOnboard");
 const authMiddleware = require("../middlewares/authMiddleware");
 const { strictLimiter } = require("../utils/rateLimiters");
@@ -104,6 +105,23 @@ adminRouter.get("/dashboard/overview", async (req, res) => {
 adminRouter.get("/analytics", async (req, res) => {
   try {
     return respond(res, await getAnalytics());
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+
+/* Recharge the provider wallets — adds to the existing balance. */
+adminRouter.post("/wallet/recharge", async (req, res) => {
+  try {
+    return respond(res, await wallet.rechargeWallet(req.body?.amount));
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+
+adminRouter.post("/wallet/sms/recharge", async (req, res) => {
+  try {
+    return respond(res, await wallet.rechargeSmsWallet(req.body?.amount));
   } catch (err) {
     return respond(res, serverError(err));
   }

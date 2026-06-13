@@ -38,6 +38,8 @@ const getAnalytics = async () => {
       msgByKind,
       msgCostByDay,
       subsByType,
+      walletRow,
+      smsWalletRow,
     ] = await Promise.all([
       getDashboardStats(),
       getRevenueDetails(),
@@ -139,6 +141,10 @@ const getAnalytics = async () => {
           FROM user_subscribed us
           JOIN subscription_plans sp ON sp.id = us.fk_subscription_plans
          GROUP BY 1 ORDER BY count DESC;`),
+      // Provider wallet (recharged by admin, deducted per external call).
+      q(`SELECT balance, per_call_cost FROM external_api_wallet WHERE id = 1;`),
+      // SMS wallet (recharged by admin, deducted per SMS sent).
+      q(`SELECT balance, per_sms_cost FROM sms_wallet WHERE id = 1;`),
     ]);
 
     return {
@@ -171,6 +177,8 @@ const getAnalytics = async () => {
         })),
         // Cost & operations (admin-only spend tracking).
         external_api: {
+          wallet_balance: Number(walletRow[0]?.balance || 0),
+          per_call_cost: Number(walletRow[0]?.per_call_cost || 0),
           today: {
             calls: externalToday[0]?.calls || 0,
             cost: Number(externalToday[0]?.cost || 0),
@@ -187,6 +195,8 @@ const getAnalytics = async () => {
           })),
         },
         notification: {
+          sms_wallet_balance: Number(smsWalletRow[0]?.balance || 0),
+          per_sms_cost: Number(smsWalletRow[0]?.per_sms_cost || 0),
           total_cost: msgByChannel.reduce((s, r) => s + Number(r.cost || 0), 0),
           by_channel: msgByChannel.map((r) => ({
             channel: r.channel,

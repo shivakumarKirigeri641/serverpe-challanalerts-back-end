@@ -753,6 +753,38 @@ const resources = {
       c("created_at", "At"),
     ],
   },
+  "external-api-wallet": {
+    group: "System",
+    label: "External API Wallet",
+    table: "external_api_wallet",
+    // Editable: set `balance` after a recharge; `per_call_cost` is the amount
+    // deducted automatically on every external API call.
+    writable: ["balance", "per_call_cost"],
+    search: [],
+    order: "id ASC",
+    display: [
+      c("id", "ID"),
+      c("balance", "Balance (₹)"),
+      c("per_call_cost", "Per-call cost (₹)"),
+      c("updated_at", "Updated"),
+    ],
+  },
+  "sms-wallet": {
+    group: "System",
+    label: "SMS Wallet",
+    table: "sms_wallet",
+    // Editable: set `balance` after a recharge; `per_sms_cost` is deducted on
+    // every SMS actually sent (via recordSend).
+    writable: ["balance", "per_sms_cost"],
+    search: [],
+    order: "id ASC",
+    display: [
+      c("id", "ID"),
+      c("balance", "Balance (₹)"),
+      c("per_sms_cost", "Per-SMS cost (₹)"),
+      c("updated_at", "Updated"),
+    ],
+  },
   "otp-sessions": {
     group: "System",
     label: "OTP Sessions",
