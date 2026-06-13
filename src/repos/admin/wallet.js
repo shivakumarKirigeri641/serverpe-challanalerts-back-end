@@ -54,6 +54,8 @@ const recharge = async (table, costCol, amount) => {
   }
 };
 
+// Only the PREPAID providers have wallets. WhatsApp (Meta) is post-paid — its
+// spend is tracked via message_logs.cost, not a rechargeable balance.
 const rechargeWallet = (amount) =>
   recharge("external_api_wallet", "per_call_cost", amount);
 const rechargeSmsWallet = (amount) =>

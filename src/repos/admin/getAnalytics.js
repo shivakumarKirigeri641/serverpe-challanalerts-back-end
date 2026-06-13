@@ -1,4 +1,5 @@
 const { connectDB } = require("../../database/connectDB");
+const { MESSAGE_COST } = require("../../utils/messageCost");
 const getDashboardStats = require("./getDashboardStats");
 const getRevenueDetails = require("./getRevenueDetails");
 
@@ -19,6 +20,13 @@ const q = async (sql) => {
 
 const getAnalytics = async () => {
   try {
+    // Single source of truth for the external-API per-call cost — the same
+    // figure the wallet deducts — so the cost charts never disagree with it.
+    const RC_COST = Number(
+      (await pool.query(`SELECT per_call_cost FROM external_api_wallet WHERE id = 1`))
+        .rows[0]?.per_call_cost || 2.91,
+    );
+
     const [
       stats,
       revenue,
@@ -40,6 +48,9 @@ const getAnalytics = async () => {
       subsByType,
       walletRow,
       smsWalletRow,
+      pvToday,
+      pvByDay,
+      pvByPage,
     ] = await Promise.all([
       getDashboardStats(),
       getRevenueDetails(),
@@ -103,19 +114,19 @@ const getAnalytics = async () => {
       // ── Cost & operations: external API calls (RC billed ~₹2.9) ──────────
       q(`
         SELECT COUNT(*)::int AS calls,
-               ROUND(SUM(CASE WHEN api_name='RC' THEN 2.9 ELSE 0 END)::numeric, 2) AS cost
+               ROUND(SUM(CASE WHEN api_name='RC' THEN ${RC_COST} ELSE 0 END)::numeric, 2) AS cost
           FROM external_api_calls WHERE call_date = CURRENT_DATE;`),
       q(`
         SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
                COUNT(*)::int AS calls,
-               ROUND(SUM(CASE WHEN api_name='RC' THEN 2.9 ELSE 0 END)::numeric, 2) AS cost
+               ROUND(SUM(CASE WHEN api_name='RC' THEN ${RC_COST} ELSE 0 END)::numeric, 2) AS cost
           FROM external_api_calls
          WHERE created_at >= now() - interval '14 days'
          GROUP BY 1 ORDER BY 1;`),
       q(`
         SELECT api_name,
                COUNT(*)::int AS calls,
-               ROUND(SUM(CASE WHEN api_name='RC' THEN 2.9 ELSE 0 END)::numeric, 2) AS cost
+               ROUND(SUM(CASE WHEN api_name='RC' THEN ${RC_COST} ELSE 0 END)::numeric, 2) AS cost
           FROM external_api_calls
          GROUP BY 1 ORDER BY calls DESC;`),
       // ── Notification spend (WhatsApp/SMS) from message_logs.cost ─────────
@@ -145,6 +156,23 @@ const getAnalytics = async () => {
       q(`SELECT balance, per_call_cost FROM external_api_wallet WHERE id = 1;`),
       // SMS wallet (recharged by admin, deducted per SMS sent).
       q(`SELECT balance, per_sms_cost FROM sms_wallet WHERE id = 1;`),
+      // ── Page views (the /track beacon → api_logs) ──────────────────────
+      q(`
+        SELECT COUNT(*)::int AS views
+          FROM api_logs
+         WHERE endpoint LIKE '%/track' AND created_at::date = CURRENT_DATE;`),
+      q(`
+        SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+               COUNT(*)::int AS views
+          FROM api_logs
+         WHERE endpoint LIKE '%/track' AND created_at >= now() - interval '14 days'
+         GROUP BY 1 ORDER BY 1;`),
+      q(`
+        SELECT COALESCE((request_body::jsonb)->>'page', '(unknown)') AS page,
+               COUNT(*)::int AS views
+          FROM api_logs
+         WHERE endpoint LIKE '%/track'
+         GROUP BY 1 ORDER BY views DESC LIMIT 10;`),
     ]);
 
     return {
@@ -197,6 +225,18 @@ const getAnalytics = async () => {
         notification: {
           sms_wallet_balance: Number(smsWalletRow[0]?.balance || 0),
           per_sms_cost: Number(smsWalletRow[0]?.per_sms_cost || 0),
+          // WhatsApp is post-paid — accrued spend (₹0.118/msg), not a wallet.
+          whatsapp: (() => {
+            const wa =
+              msgByChannel.find(
+                (c) => String(c.channel).toUpperCase() === "WHATSAPP",
+              ) || {};
+            return {
+              sent: wa.sent || 0,
+              cost: Number(wa.cost || 0),
+              per_message: MESSAGE_COST.WHATSAPP,
+            };
+          })(),
           total_cost: msgByChannel.reduce((s, r) => s + Number(r.cost || 0), 0),
           by_channel: msgByChannel.map((r) => ({
             channel: r.channel,
@@ -215,6 +255,11 @@ const getAnalytics = async () => {
           })),
         },
         subscriptions_by_type: subsByType,
+        page_views: {
+          today: pvToday[0]?.views || 0,
+          by_day: pvByDay,
+          by_page: pvByPage,
+        },
       },
     };
   } catch (err) {

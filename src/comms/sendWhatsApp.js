@@ -3,6 +3,10 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
+/* WhatsApp (Meta) is POST-PAID — there is no prepaid balance to deplete; each
+   message simply accrues ₹0.118. That spend is captured in message_logs.cost
+   (via costFor) and surfaced in admin analytics, so nothing is billed here. */
+
 /** Normalize a cleaned 10-digit Indian mobile to WhatsApp's "91XXXXXXXXXX". */
 const toWhatsAppNumber = (mobile_number) =>
   `91${String(mobile_number).replace(/\D/g, "").replace(/^91/, "")}`;

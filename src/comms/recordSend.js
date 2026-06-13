@@ -1,6 +1,6 @@
 const { connectDB } = require("../database/connectDB");
 const { costFor } = require("../utils/messageCost");
-const notifyLowWallet = require("./notifyLowWallet");
+const deductWallet = require("./deductWallet");
 const pool = connectDB();
 
 /**
@@ -54,25 +54,14 @@ const recordSend = async ({
     );
 
     // Deduct from the SMS provider wallet on an actual SMS send (single-row
-    // ledger; admin recharges it). Same fail-safe block — never breaks a send.
-    // Email the admin when the balance crosses below ₹50.
+    // ledger; admin recharges it) and email the admin if it crosses below ₹50.
     if (sent && String(channel).toUpperCase() === "SMS") {
-      const w = await pool.query(
-        `update sms_wallet
-            set balance = balance - per_sms_cost, updated_at = now()
-          where id = 1
-        returning balance, per_sms_cost`,
-      );
-      const row = w.rows[0];
-      if (row) {
-        const newBalance = Number(row.balance);
-        notifyLowWallet({
-          name: "SMS wallet",
-          prevBalance: newBalance + Number(row.per_sms_cost),
-          newBalance,
-          threshold: 50,
-        });
-      }
+      await deductWallet({
+        table: "sms_wallet",
+        costCol: "per_sms_cost",
+        name: "SMS wallet",
+        threshold: 50,
+      });
     }
   } catch (err) {
     console.error("recordSend failed:", err.message);

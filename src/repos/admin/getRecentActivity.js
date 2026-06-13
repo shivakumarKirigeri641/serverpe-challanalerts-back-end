@@ -11,10 +11,39 @@ const pool = connectDB();
  * @returns {Promise<{statuscode, successstatus, message, data:{ events:[], latest_id:number }}>}
  */
 
-/** Map a request endpoint + status to a friendly activity label + type. */
-const describe = (endpoint = "", status) => {
+/* Friendly names for the SPA pages the /track beacon reports (by pathname). */
+const PAGE_NAMES = {
+  "/": "Landing page",
+  "/subscribe": "Subscribe page",
+  "/dashboard": "Dashboard page",
+  "/feedback": "Feedback page",
+  "/terms": "Terms page",
+  "/privacy": "Privacy page",
+  "/consent-policy": "Consent policy",
+  "/refund-policy": "Refund policy",
+  "/liabilities-policy": "Liabilities policy",
+  "/exchange-vehicle-policy": "Exchange-vehicle policy",
+};
+const pageName = (p) => PAGE_NAMES[p] || (p ? `page ${p}` : "a page");
+
+/** Safely parse the api_logs.request_body column (jsonb→object, text→string). */
+const parseBody = (rb) => {
+  if (!rb) return null;
+  if (typeof rb === "object") return rb;
+  try {
+    return JSON.parse(rb);
+  } catch {
+    return null;
+  }
+};
+
+/** Map a request endpoint + status (+ body) to a friendly activity label. */
+const describe = (endpoint = "", status, body = null) => {
   const e = String(endpoint).toLowerCase();
   const ok = status && status < 400;
+  // Explicit page-view beacon → "Viewed <page>".
+  if (e.endsWith("/track") || e.includes("/track?"))
+    return { type: "visit", label: `Viewed ${pageName(body?.page)}` };
   if (e.includes("subscribe/verify-otp"))
     return { type: "subscribe", label: ok ? "New subscription" : "Subscription attempt failed" };
   if (e.includes("subscribe/send-otp"))
@@ -53,7 +82,7 @@ const getRecentActivity = async ({ after = 0, limit = 30 } = {}) => {
     const afterId = parseInt(after, 10) || 0;
     const result = await pool.query(
       `select id, method, endpoint, mobile_number, vehicle_number,
-              status_code, device_info, ip_address, created_at
+              status_code, device_info, ip_address, request_body, created_at
          from api_logs
         where id > $1
         order by id desc
@@ -61,7 +90,7 @@ const getRecentActivity = async ({ after = 0, limit = 30 } = {}) => {
       [afterId, lim],
     );
     const events = result.rows.map((r) => {
-      const d = describe(r.endpoint, r.status_code);
+      const d = describe(r.endpoint, r.status_code, parseBody(r.request_body));
       return {
         id: Number(r.id),
         type: d.type,

@@ -65,6 +65,19 @@ publicRotuer.get("/vehicles-subscribed-count", async (req, res) => {
     });
   }
 });
+/* 📡 Telemetry beacon for user operations (landing-page visits + every SPA
+   route change). The request itself IS the observable event: apiLogger records
+   it (endpoint /track, page, ip, device, user-agent) into api_logs, which feeds
+   the admin live-activity watcher. No DB work needed here — keep it instant. */
+publicRotuer.post("/track", (req, res) => {
+  return res.status(200).json({
+    statuscode: 200,
+    powered_by: "ServerPe App Solutions",
+    successstatus: true,
+    message: "ok",
+  });
+});
+
 publicRotuer.get("/query-types", async (req, res) => {
   try {
     /*let { ipAddress, visitTime, devicename, result_ipdetails } =

@@ -58,7 +58,7 @@ const sendVDHReportToWhatsapp = async (
   //fastag
   const res = await sendWhatsApp({
     mobile_number,
-    template: "amv_vdh_v1",
+    template: "amv_vdhwithfeedback_v2",
     params: [
       user_name,
       vehicle_number,
@@ -71,7 +71,12 @@ const sendVDHReportToWhatsapp = async (
     /*onSmsFallback: () =>
       sendWelcomeSMS(pool, vehicle_number, mobile_number, expiry_date),*/
   });
-  recordSend({ mobile_number, channel: "WHATSAPP", sent: !!res?.ok, kind: "VDH" });
+  recordSend({
+    mobile_number,
+    channel: "WHATSAPP",
+    sent: !!res?.ok,
+    kind: "VDH",
+  });
   return res;
 };
 
