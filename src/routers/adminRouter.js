@@ -8,6 +8,7 @@ const crudRepo = require("../repos/admin/crudRepo");
 const adminAuth = require("../repos/admin/adminAuth");
 const getDashboardStats = require("../repos/admin/getDashboardStats");
 const getRevenueDetails = require("../repos/admin/getRevenueDetails");
+const getDashboardOverview = require("../repos/admin/getDashboardOverview");
 const getAnalytics = require("../repos/admin/getAnalytics");
 const getRecentActivity = require("../repos/admin/getRecentActivity");
 const bulk = require("../repos/admin/bulkOnboard");
@@ -87,6 +88,14 @@ adminRouter.get("/dashboard/stats", async (req, res) => {
 adminRouter.get("/dashboard/revenue", async (req, res) => {
   try {
     return respond(res, await getRevenueDetails());
+  } catch (err) {
+    return respond(res, serverError(err));
+  }
+});
+
+adminRouter.get("/dashboard/overview", async (req, res) => {
+  try {
+    return respond(res, await getDashboardOverview());
   } catch (err) {
     return respond(res, serverError(err));
   }
